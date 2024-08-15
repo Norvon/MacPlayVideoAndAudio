@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+import CoreMedia
+
 
 @Observable class MetalLayerHolder {
     var metalLayer: CAMetalLayer?
@@ -76,7 +78,17 @@ struct ContentView: View {
                     
                     Button("replay") {
                         decoder.rePlay()
-                    }    
+                    }   
+                    
+                    Button("seek") {
+                        let time = CMTime(seconds: 60 * 3, preferredTimescale: 1)
+                        decoder.seek(time: time)
+                    }
+                    
+                    Button("seek2") {
+                        let time = CMTime(seconds: 0, preferredTimescale: 1)
+                        decoder.seek(time: time)
+                    }
                 }
                 
                 Spacer()
@@ -103,7 +115,7 @@ extension ContentView {
         decoder.testLeftLayer = leftLayer.metalLayer
         decoder.testRightLayer = rightLayer.metalLayer
         
-        decoder.play(url: Bundle.main.url(forResource: "db", withExtension: "mp4")!,
+        decoder.play(url: Bundle.main.url(forResource: "t", withExtension: "mp4")!,
                      leftEyeTexture: leftLayer.metalLayer?.nextDrawable()?.texture,
                      rightEyeTexture: rightLayer.metalLayer?.nextDrawable()?.texture)
         

@@ -37,7 +37,6 @@ class WLMp4Decoder: NSObject {
     
 
     @objc func play(url: URL, leftEyeTexture: MTLTexture?, rightEyeTexture: MTLTexture?) {
-        
         audioPlayer?.pause()
         videoOutput = nil
         assetReader = nil
@@ -62,13 +61,7 @@ class WLMp4Decoder: NSObject {
     }
     
     @objc func rePlay() {
-        audioPlayer?.pause()
-        videoOutput = nil
-        assetReader = nil
-        audioPlayer = nil
-        
-        setIntendedSpatialExperience()
-        handleInit()
+        seek(time: .zero)
     }
     
     @objc func setIntendedSpatialExperience() {
@@ -91,11 +84,85 @@ class WLMp4Decoder: NSObject {
             return
         }
     }
+    
+    @objc func seek(time: CMTime) {
+        if let token = timeObserverToken {
+            audioPlayer?.removeTimeObserver(token)
+            timeObserverToken = nil
+        }
+
+        pause()
+        audioPlayer?.seek(to: time) {success in
+            if success {
+                Task { @MainActor in
+                    let _ = await self.videoSeek(to: time)
+                    self.resume()
+                }
+            }
+        }
+    }
 }
 
 extension WLMp4Decoder { // 处理视频渲染
+    
+    private func videoSeek(to time: CMTime) async -> Bool {
+        assetReader?.cancelReading()
+        
+        guard let url = url else { return false}
+        let asset = AVURLAsset(url: url)
+        guard let newAssetReader = try? AVAssetReader(asset: asset) else { return false }
+        self.assetReader = newAssetReader
+        
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first else {
+            print("Failed to get video info")
+            return false
+        }
+        
+        let videoOutput = AVAssetReaderTrackOutput(track: track, outputSettings: getOutputSettings(videoInfo))
+        if(newAssetReader.canAdd(videoOutput)){
+            newAssetReader.add(videoOutput)
+        }
+        
+        newAssetReader.timeRange = CMTimeRange(start: time, duration: .positiveInfinity)
+        
+        self.videoOutput = videoOutput
+        
+        
+        if newAssetReader.startReading() {
+            print("开始读取")
+            assetReader = newAssetReader
+        } else {
+            print("无法启动阅读器: \(newAssetReader.error.debugDescription)")
+            print("文件是否存在：\(FileManager.default.fileExists(atPath: url.path()))")
+            newAssetReader.cancelReading()
+        }
+        
+        setupTimeObserver()
+        
+        return true
+    }
+    
+    private func getOutputSettings(_ videoInfo: VideoInfo) -> [String: Any] {
+        var decompressionProperties: [String: Any] = [:]
+        decompressionProperties[kVTDecompressionPropertyKey_RequestedMVHEVCVideoLayerIDs as String] = [0, 1]
+        
+        var outputSettings: [String: Any] = [:]
+        if videoInfo.isSpatial { // 处理 MVHEVC
+            outputSettings[AVVideoDecompressionPropertiesKey] = decompressionProperties
+        }
+        outputSettings[kCVPixelBufferPixelFormatTypeKey as String] = kCVPixelFormatType_32BGRA
+        outputSettings[kCVPixelBufferMetalCompatibilityKey as String] = true
+        return outputSettings
+    }
+    
     private func handleInit() {
         Task { @MainActor in
+            
+            if let token = timeObserverToken {
+                audioPlayer?.removeTimeObserver(token)
+                timeObserverToken = nil
+            }
+            
             guard let url = url else { return }
             let asset = AVURLAsset(url: url)
             guard let assetReader = try? AVAssetReader(asset: asset) else {
@@ -104,23 +171,11 @@ extension WLMp4Decoder { // 处理视频渲染
             }
             self.assetReader = assetReader
     
-                   
-            
             guard let videoInfo = await VideoTools.getVideoInfo(asset: asset) else {
                 print("Failed to get video info")
                 return
             }
-            
-            
-            var decompressionProperties: [String: Any] = [:]
-            decompressionProperties[kVTDecompressionPropertyKey_RequestedMVHEVCVideoLayerIDs as String] = [0, 1]
-            
-            var outputSettings: [String: Any] = [:]
-            if videoInfo.isSpatial { // 处理 MVHEVC
-                outputSettings[AVVideoDecompressionPropertiesKey] = decompressionProperties
-            }
-            outputSettings[kCVPixelBufferPixelFormatTypeKey as String] = kCVPixelFormatType_32BGRA
-            outputSettings[kCVPixelBufferMetalCompatibilityKey as String] = true
+
             
             guard let track = try? await asset.loadTracks(withMediaType: .video).first else {
                 print("Failed to get video info")
@@ -138,7 +193,7 @@ extension WLMp4Decoder { // 处理视频渲染
             }
             print("fps:\(videoInfo.fps) ")
             self.videoInfo = videoInfo
-            let videoOutput = AVAssetReaderTrackOutput(track: track, outputSettings: outputSettings)
+            let videoOutput = AVAssetReaderTrackOutput(track: track, outputSettings: getOutputSettings(videoInfo))
             if(assetReader.canAdd(videoOutput)){
                 assetReader.add(videoOutput)
             }
