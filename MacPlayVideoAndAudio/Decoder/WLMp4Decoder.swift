@@ -86,16 +86,17 @@ class WLMp4Decoder: NSObject {
     }
     
     @objc func seek(time: CMTime) {
+        guard let audioPlayer = audioPlayer else { return }
         if let token = timeObserverToken {
-            audioPlayer?.removeTimeObserver(token)
+            audioPlayer.removeTimeObserver(token)
             timeObserverToken = nil
         }
 
         pause()
-        audioPlayer?.seek(to: time) {success in
+        audioPlayer.seek(to: time) {success in
             if success {
                 Task { @MainActor in
-                    let _ = await self.videoSeek(to: time)
+                    let _ = await self.videoSeek(to: audioPlayer.currentTime())
                     self.resume()
                 }
             }
@@ -226,7 +227,13 @@ extension WLMp4Decoder { // 处理视频渲染
             
             let playerItem = AVPlayerItem(asset: composition)
             audioPlayer = AVPlayer(playerItem: playerItem)
-            
+            NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
+            NotificationCenter.default.addObserver(
+                            self,
+                            selector: #selector(playerDidFinishPlaying),
+                            name: .AVPlayerItemDidPlayToEndTime,
+                            object: playerItem
+                        )
             
             audioPlayer?.play()
             if assetReader.startReading() {
@@ -240,6 +247,12 @@ extension WLMp4Decoder { // 处理视频渲染
             setupTimeObserver()
         }
     }
+    
+    
+    @objc func playerDidFinishPlaying(note: NSNotification) {
+            print("播放完成")
+            playCompleteCallback?(true)
+        }
     
     private func setupTimeObserver() {
         guard let audioPlayer = audioPlayer else { return }
