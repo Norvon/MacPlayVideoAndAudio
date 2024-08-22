@@ -57,10 +57,29 @@ struct ContentView: View {
     @State var decoder2 = WLMp4Decoder()
     @State private var leftLayer = MetalLayerHolder()
     @State private var rightLayer = MetalLayerHolder()
-    @State var w: CGFloat = 1280
-    @State var h: CGFloat = 720
+    
+    @State private var leftLayer2 = MetalLayerHolder()
+    @State private var rightLayer2 = MetalLayerHolder()
+    
+    @State var w: CGFloat = 1000
+    @State var h: CGFloat = 2048
     var body: some View {
         ZStack {
+            HStack {
+                Spacer()
+                PlayerView(layerHolder: $leftLayer)
+                    .frame(width: w, height: h)
+                
+                PlayerView(layerHolder: $rightLayer)
+                    .frame(width: w, height: h)
+                
+//                PlayerView(layerHolder: $leftLayer2)
+//                    .frame(width: w, height: h)
+//                
+//                PlayerView(layerHolder: $rightLayer2)
+//                    .frame(width: w, height: h)
+                Spacer()
+            }
             
             VStack {
                 HStack {
@@ -78,10 +97,10 @@ struct ContentView: View {
                     
                     Button("replay") {
                         decoder.rePlay()
-                    }   
+                    }
                     
                     Button("seek") {
-                        let time = CMTime(seconds: 60 * 3, preferredTimescale: 1)
+                        let time = CMTime(seconds: 10, preferredTimescale: 1)
                         decoder.seek(time: time)
                     }
                     
@@ -90,21 +109,11 @@ struct ContentView: View {
                         decoder.seek(time: time)
                     }
                 }
-                
+                .padding()
+                .background(.red)
                 Spacer()
             }
             
-            HStack {
-                Spacer()
-                PlayerView(layerHolder: $leftLayer)
-                    .frame(width: w, height: h)
-                
-                PlayerView(layerHolder: $rightLayer)
-                    .frame(width: w, height: h)
-                Spacer()
-            }
-            .frame(width: 1920, height: 1080)
-            //
             
         }
     }
@@ -115,11 +124,13 @@ extension ContentView {
         decoder.testLeftLayer = leftLayer.metalLayer
         decoder.testRightLayer = rightLayer.metalLayer
         
-        decoder.play(url: Bundle.main.url(forResource: "t", withExtension: "mp4")!,
+        decoder.play(url: Bundle.main.url(forResource: "8151_29s", withExtension: "mov")!,
                      leftEyeTexture: leftLayer.metalLayer?.nextDrawable()?.texture,
                      rightEyeTexture: rightLayer.metalLayer?.nextDrawable()?.texture)
         
-//        decoder2.play(url: Bundle.main.url(forResource: "730_1750_Music", withExtension: "mov")!,
+//        decoder2.testLeftLayer = leftLayer2.metalLayer
+//        decoder2.testRightLayer = rightLayer2.metalLayer
+//        decoder2.play(url: Bundle.main.url(forResource: "8151", withExtension: "mov")!,
 //                     leftEyeTexture: leftLayer.metalLayer?.nextDrawable()?.texture,
 //                     rightEyeTexture: rightLayer.metalLayer?.nextDrawable()?.texture)
     }
