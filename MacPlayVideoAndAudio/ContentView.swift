@@ -45,7 +45,7 @@ struct PlayerView: NSViewRepresentable {
     
     func updateNSView(_ uiView: NSViewType, context: Context) {
         if let layer = uiView.layer as? CAMetalLayer {
-            layer.colorspace = CGColorSpace(name: CGColorSpace.extendedDisplayP3)
+            layer.colorspace = CGColorSpace(name: CGColorSpace.linearDisplayP3)
             layer.framebufferOnly = false
         }
     }
@@ -61,7 +61,7 @@ struct ContentView: View {
     @State private var leftLayer2 = MetalLayerHolder()
     @State private var rightLayer2 = MetalLayerHolder()
     
-    @State var w: CGFloat = 1000
+    @State var w: CGFloat = 4096
     @State var h: CGFloat = 2048
     var body: some View {
         ZStack {
@@ -100,7 +100,7 @@ struct ContentView: View {
                     }
                     
                     Button("seek") {
-                        let time = CMTime(seconds: 10, preferredTimescale: 1)
+                        let time = CMTime(seconds: 50, preferredTimescale: 1)
                         decoder.seek(time: time)
                     }
                     
@@ -124,7 +124,7 @@ extension ContentView {
         decoder.testLeftLayer = leftLayer.metalLayer
         decoder.testRightLayer = rightLayer.metalLayer
         
-        decoder.play(url: Bundle.main.url(forResource: "8151_29s", withExtension: "mov")!,
+        decoder.play(url: Bundle.main.url(forResource: "fail", withExtension: "mov")!,
                      leftEyeTexture: leftLayer.metalLayer?.nextDrawable()?.texture,
                      rightEyeTexture: rightLayer.metalLayer?.nextDrawable()?.texture)
         
