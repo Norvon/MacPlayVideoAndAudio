@@ -484,6 +484,8 @@ extension WLMp4Decoder { // 处理 texture
             return nil
         }
         
+        Test.test(cvPixelBuffer)
+        
         let width = CVPixelBufferGetWidth(cvPixelBuffer)
         let height = CVPixelBufferGetHeight(cvPixelBuffer)
         
