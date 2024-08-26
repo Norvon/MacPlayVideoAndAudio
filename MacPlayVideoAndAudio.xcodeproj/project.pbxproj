@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		7A25B8522C7C284D004F8990 /* Test.m in Sources */ = {isa = PBXBuildFile; fileRef = 7A25B8512C7C284D004F8990 /* Test.m */; };
+		7A8B594E2C789F23002E5141 /* fail.mov in Resources */ = {isa = PBXBuildFile; fileRef = 7A8B594D2C789F23002E5141 /* fail.mov */; };
 		7ACD0C532C576E8B0057750A /* MacPlayVideoAndAudioApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ACD0C522C576E8B0057750A /* MacPlayVideoAndAudioApp.swift */; };
 		7ACD0C552C576E8B0057750A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ACD0C542C576E8B0057750A /* ContentView.swift */; };
 		7ACD0C572C576E8C0057750A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7ACD0C562C576E8C0057750A /* Assets.xcassets */; };
@@ -14,11 +16,13 @@
 		7ACD0C652C576EA10057750A /* VideoInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ACD0C612C576EA10057750A /* VideoInfo.swift */; };
 		7ACD0C662C576EA10057750A /* VideoTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ACD0C622C576EA10057750A /* VideoTools.swift */; };
 		7ACD0C672C576EA10057750A /* WLMp4Decoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ACD0C632C576EA10057750A /* WLMp4Decoder.swift */; };
-		7ACD0C692C57701A0057750A /* t.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 7ACD0C682C57701A0057750A /* t.mp4 */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		7A5C042F2C6B385C00C28560 /* MacPlayVideoAndAudioDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MacPlayVideoAndAudioDebug.entitlements; sourceTree = "<group>"; };
+		7A25B84F2C7C284D004F8990 /* MacPlayVideoAndAudio-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "MacPlayVideoAndAudio-Bridging-Header.h"; sourceTree = "<group>"; };
+		7A25B8502C7C284D004F8990 /* Test.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Test.h; sourceTree = "<group>"; };
+		7A25B8512C7C284D004F8990 /* Test.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Test.m; sourceTree = "<group>"; };
+		7A8B594D2C789F23002E5141 /* fail.mov */ = {isa = PBXFileReference; lastKnownFileType = video.quicktime; path = fail.mov; sourceTree = "<group>"; };
 		7ACD0C4F2C576E8B0057750A /* MacPlayVideoAndAudio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacPlayVideoAndAudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7ACD0C522C576E8B0057750A /* MacPlayVideoAndAudioApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPlayVideoAndAudioApp.swift; sourceTree = "<group>"; };
 		7ACD0C542C576E8B0057750A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -28,7 +32,6 @@
 		7ACD0C612C576EA10057750A /* VideoInfo.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = VideoInfo.swift; sourceTree = "<group>"; };
 		7ACD0C622C576EA10057750A /* VideoTools.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = VideoTools.swift; sourceTree = "<group>"; };
 		7ACD0C632C576EA10057750A /* WLMp4Decoder.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WLMp4Decoder.swift; sourceTree = "<group>"; };
-		7ACD0C682C57701A0057750A /* t.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = t.mp4; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -61,14 +64,16 @@
 		7ACD0C512C576E8B0057750A /* MacPlayVideoAndAudio */ = {
 			isa = PBXGroup;
 			children = (
-				7A5C042F2C6B385C00C28560 /* MacPlayVideoAndAudioDebug.entitlements */,
-				7ACD0C682C57701A0057750A /* t.mp4 */,
+				7A8B594D2C789F23002E5141 /* fail.mov */,
 				7ACD0C642C576EA10057750A /* Decoder */,
 				7ACD0C522C576E8B0057750A /* MacPlayVideoAndAudioApp.swift */,
 				7ACD0C542C576E8B0057750A /* ContentView.swift */,
 				7ACD0C562C576E8C0057750A /* Assets.xcassets */,
 				7ACD0C5B2C576E8C0057750A /* MacPlayVideoAndAudio.entitlements */,
 				7ACD0C582C576E8C0057750A /* Preview Content */,
+				7A25B8502C7C284D004F8990 /* Test.h */,
+				7A25B8512C7C284D004F8990 /* Test.m */,
+				7A25B84F2C7C284D004F8990 /* MacPlayVideoAndAudio-Bridging-Header.h */,
 			);
 			path = MacPlayVideoAndAudio;
 			sourceTree = "<group>";
@@ -123,6 +128,7 @@
 				TargetAttributes = {
 					7ACD0C4E2C576E8B0057750A = {
 						CreatedOnToolsVersion = 15.4;
+						LastSwiftMigration = 1540;
 					};
 				};
 			};
@@ -149,7 +155,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7ACD0C692C57701A0057750A /* t.mp4 in Resources */,
+				7A8B594E2C789F23002E5141 /* fail.mov in Resources */,
 				7ACD0C5A2C576E8C0057750A /* Preview Assets.xcassets in Resources */,
 				7ACD0C572C576E8C0057750A /* Assets.xcassets in Resources */,
 			);
@@ -165,6 +171,7 @@
 				7ACD0C652C576EA10057750A /* VideoInfo.swift in Sources */,
 				7ACD0C552C576E8B0057750A /* ContentView.swift in Sources */,
 				7ACD0C672C576EA10057750A /* WLMp4Decoder.swift in Sources */,
+				7A25B8522C7C284D004F8990 /* Test.m in Sources */,
 				7ACD0C532C576E8B0057750A /* MacPlayVideoAndAudioApp.swift in Sources */,
 				7ACD0C662C576EA10057750A /* VideoTools.swift in Sources */,
 			);
@@ -296,6 +303,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = MacPlayVideoAndAudio/MacPlayVideoAndAudioDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
@@ -317,6 +325,8 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "MacPlayVideoAndAudio/MacPlayVideoAndAudio-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
@@ -326,6 +336,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = MacPlayVideoAndAudio/MacPlayVideoAndAudio.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
@@ -347,6 +358,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "MacPlayVideoAndAudio/MacPlayVideoAndAudio-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
