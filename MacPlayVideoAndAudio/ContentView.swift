@@ -18,7 +18,7 @@ class PlayUIView: NSView {
     override func makeBackingLayer() -> CALayer {
             let metalLayer = CAMetalLayer()
             metalLayer.device = MTLCreateSystemDefaultDevice()
-            metalLayer.pixelFormat = .bgra8Unorm
+            metalLayer.pixelFormat = .bgr10_xr_srgb
             metalLayer.framebufferOnly = true
             return metalLayer
         }
@@ -45,7 +45,7 @@ struct PlayerView: NSViewRepresentable {
     
     func updateNSView(_ uiView: NSViewType, context: Context) {
         if let layer = uiView.layer as? CAMetalLayer {
-            layer.colorspace = CGColorSpace(name: CGColorSpace.linearDisplayP3)
+            layer.colorspace = CGColorSpace(name: CGColorSpace.itur_2100_PQ)
             layer.framebufferOnly = false
         }
     }

@@ -34,8 +34,65 @@ class WLMp4Decoder: NSObject {
     let test = true
     var testLeftLayer: CAMetalLayer?
     var testRightLayer: CAMetalLayer?
+    var yuvToSRGBTexturePipeline: (any MTLRenderPipelineState)?
     
-
+    var metalSource: String {
+        get {
+            """
+            #include <metal_stdlib>
+            using namespace metal;
+            struct VertexOutput {
+                float4 position [[position]];
+                float2 texcoord;
+            };
+            constexpr sampler s = sampler(filter::linear);
+            vertex VertexOutput vertex_sampler(const uint vid [[vertex_id]]) {
+                const VertexOutput vertexData[3] = {
+                    {{-1.0,  1.0, 0.0, 1.0}, {0.0, 0.0}},
+                    {{ 3.0,  1.0, 0.0, 1.0}, {2.0, 0.0}},
+                    {{-1.0, -3.0, 0.0, 1.0}, {0.0, 2.0}}
+                };
+                return vertexData[vid];
+            }
+            fragment half4 post_model_fragment(VertexOutput in [[stage_in]], texture2d<half> y_data [[texture(0)]], texture2d<half> uv_data [[texture(1)]]) {
+                const half3x3 yuv_rgb = {
+                    half3(1.0h, 1.0h, 1.0h),
+                    half3(0.0h, -0.16455312684366h, 1.8814h),
+                    half3(1.4746h, -0.57135312684366h, 0.0h)
+                };
+                half4 y = y_data.sample(s, in.texcoord);
+                half4 uv = uv_data.sample(s, in.texcoord) - 0.5h;
+                half3 yuv(y.x, uv.xy);
+                half3 rgb_bt2020 = yuv_rgb * yuv;
+            
+                return half4(pow(rgb_bt2020, 2.2), 1);
+            }
+            """
+        }
+    }
+    
+    
+    override init() {
+        super.init()
+        let compileOptions = MTLCompileOptions()
+        compileOptions.fastMathEnabled = true
+        guard let metalLibrary = try? device?.makeLibrary(source: metalSource, options: compileOptions) else {
+            print("metalLibrary")
+            return
+        }
+        
+        let vertexFunction = metalLibrary.makeFunction(name: "vertex_sampler")
+        let fragmentFunction = metalLibrary.makeFunction(name: "post_model_fragment")
+        
+        
+        let pipelineStateDescriptor = MTLRenderPipelineDescriptor()
+        pipelineStateDescriptor.vertexFunction = vertexFunction
+        pipelineStateDescriptor.fragmentFunction = fragmentFunction
+        pipelineStateDescriptor.colorAttachments[0].pixelFormat = .bgr10_xr_srgb
+        yuvToSRGBTexturePipeline = try? device?.makeRenderPipelineState(descriptor: pipelineStateDescriptor)
+    }
+    
+    
     @objc func play(url: URL, leftEyeTexture: MTLTexture?, rightEyeTexture: MTLTexture?) {
         audioPlayer?.pause()
         videoOutput = nil
@@ -45,7 +102,7 @@ class WLMp4Decoder: NSObject {
         self.url = url
         self.leftEyeTexture = leftEyeTexture
         self.rightEyeTexture = rightEyeTexture
-
+        
         setIntendedSpatialExperience()
         handleInit()
     }
@@ -66,20 +123,20 @@ class WLMp4Decoder: NSObject {
     
     @objc func setIntendedSpatialExperience() {
         Task { @MainActor in
-//            for item in UIApplication.shared.connectedScenes {
-//                if item.session.role == .immersiveSpaceApplication {
-//                    let experience: AVAudioSessionSpatialExperience
-//                    experience = .headTracked(soundStageSize: .large, anchoringStrategy: .scene(identifier: item.session.persistentIdentifier))
-//                    do {
-//                        try AVAudioSession.sharedInstance().setIntendedSpatialExperience(experience)
-//                    } catch {
-//                        print("setIntendedSpatialExperience error")
-//                        return
-//                    }
-//                    print("setIntendedSpatialExperience success")
-//                    return
-//                }
-//            }
+            //            for item in UIApplication.shared.connectedScenes {
+            //                if item.session.role == .immersiveSpaceApplication {
+            //                    let experience: AVAudioSessionSpatialExperience
+            //                    experience = .headTracked(soundStageSize: .large, anchoringStrategy: .scene(identifier: item.session.persistentIdentifier))
+            //                    do {
+            //                        try AVAudioSession.sharedInstance().setIntendedSpatialExperience(experience)
+            //                    } catch {
+            //                        print("setIntendedSpatialExperience error")
+            //                        return
+            //                    }
+            //                    print("setIntendedSpatialExperience success")
+            //                    return
+            //                }
+            //            }
             print("setIntendedSpatialExperience error ")
             return
         }
@@ -91,7 +148,7 @@ class WLMp4Decoder: NSObject {
             audioPlayer.removeTimeObserver(token)
             timeObserverToken = nil
         }
-
+        
         pause()
         audioPlayer.seek(to: time) {success in
             if success {
@@ -151,7 +208,7 @@ extension WLMp4Decoder { // 处理视频渲染
         if videoInfo.isSpatial { // 处理 MVHEVC
             outputSettings[AVVideoDecompressionPropertiesKey] = decompressionProperties
         }
-        outputSettings[kCVPixelBufferPixelFormatTypeKey as String] = kCVPixelFormatType_32BGRA
+        outputSettings[kCVPixelBufferPixelFormatTypeKey as String] = kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
         outputSettings[kCVPixelBufferMetalCompatibilityKey as String] = true
         return outputSettings
     }
@@ -171,12 +228,12 @@ extension WLMp4Decoder { // 处理视频渲染
                 return
             }
             self.assetReader = assetReader
-    
+            
             guard let videoInfo = await VideoTools.getVideoInfo(asset: asset) else {
                 print("Failed to get video info")
                 return
             }
-
+            
             
             guard let track = try? await asset.loadTracks(withMediaType: .video).first else {
                 print("Failed to get video info")
@@ -205,8 +262,8 @@ extension WLMp4Decoder { // 处理视频渲染
                 return
             }
             
-//            let audioItem = AVPlayerItem(asset: asset)
-//            audioPlayer = AVPlayer(playerItem: audioItem)
+            //            let audioItem = AVPlayerItem(asset: asset)
+            //            audioPlayer = AVPlayer(playerItem: audioItem)
             
             
             guard let duration = try? await asset.load(.duration) else {
@@ -229,11 +286,11 @@ extension WLMp4Decoder { // 处理视频渲染
             audioPlayer = AVPlayer(playerItem: playerItem)
             NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
             NotificationCenter.default.addObserver(
-                            self,
-                            selector: #selector(playerDidFinishPlaying),
-                            name: .AVPlayerItemDidPlayToEndTime,
-                            object: playerItem
-                        )
+                self,
+                selector: #selector(playerDidFinishPlaying),
+                name: .AVPlayerItemDidPlayToEndTime,
+                object: playerItem
+            )
             
             audioPlayer?.play()
             if assetReader.startReading() {
@@ -250,9 +307,9 @@ extension WLMp4Decoder { // 处理视频渲染
     
     
     @objc func playerDidFinishPlaying(note: NSNotification) {
-            print("播放完成")
-            playCompleteCallback?(true)
-        }
+        print("播放完成")
+        playCompleteCallback?(true)
+    }
     
     private func setupTimeObserver() {
         guard let audioPlayer = audioPlayer else { return }
@@ -266,10 +323,10 @@ extension WLMp4Decoder { // 处理视频渲染
         
         guard let audioPlayer = audioPlayer else { return }
         
-//        guard let leftEyeTexture = leftEyeTexture,
-//              let rightEyeTexture = rightEyeTexture else {
-//            return
-//        }
+        //        guard let leftEyeTexture = leftEyeTexture,
+        //              let rightEyeTexture = rightEyeTexture else {
+        //            return
+        //        }
         
         guard let assetReader = self.assetReader else {
             print("Failed not found assetReader ")
@@ -311,7 +368,7 @@ extension WLMp4Decoder { // 处理视频渲染
                 }
             }
         } else if offset > 0.1 {
-            return   
+            return
         }
         
         guard let textures = getTextures(cmSampleBuffer: nextSampleBuffer) else {
@@ -334,51 +391,87 @@ extension WLMp4Decoder { // 处理视频渲染
             return
         }
         
-        guard let blitCommandEncoder = commandBuffer.makeBlitCommandEncoder() else {
-            print("Could not create a blit command encoder")
-            return
-        }
+        let renderPassDescriptorLeft = MTLRenderPassDescriptor()
+        renderPassDescriptorLeft.colorAttachments[0].texture = testLeftLayer!.nextDrawable()!.texture
+        renderPassDescriptorLeft.colorAttachments[0].loadAction = .clear
+        renderPassDescriptorLeft.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
+        renderPassDescriptorLeft.colorAttachments[0].storeAction = .store
+        
+        let renderEncoderLeft = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptorLeft)
+        renderEncoderLeft?.setRenderPipelineState(yuvToSRGBTexturePipeline!)
+        renderEncoderLeft?.setFragmentTexture(textures[0].yMTLTexture, index: 0)
+        renderEncoderLeft?.setFragmentTexture(textures[0].uvMTLvTexture, index: 1)
+        
+        // 设置顶点缓冲区、绘制
+        renderEncoderLeft?.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoderLeft?.endEncoding()
         
         
-
         
-        if test {
-            testRender(textures: textures, blitCommandEncoder: blitCommandEncoder, commandBuffer: commandBuffer)
-        } else {
-            if textures.count > 0 {
-                blitCommandEncoder.copy(from: textures[0], to: leftEyeTexture)
-            }
-            if textures.count > 1 {
-                blitCommandEncoder.copy(from: textures[1], to: rightEyeTexture)
-            }
-            
-            blitCommandEncoder.endEncoding()
-            commandBuffer.commit()
-        }
+        let renderPassDescriptorRight = MTLRenderPassDescriptor()
+        renderPassDescriptorRight.colorAttachments[0].texture = testRightLayer!.nextDrawable()!.texture
+        renderPassDescriptorRight.colorAttachments[0].loadAction = .clear
+        renderPassDescriptorRight.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
+        renderPassDescriptorRight.colorAttachments[0].storeAction = .store
+        
+        let renderEncoderRight = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptorRight)
+        renderEncoderRight?.setRenderPipelineState(yuvToSRGBTexturePipeline!)
+        renderEncoderRight?.setFragmentTexture(textures[1].yMTLTexture, index: 0)
+        renderEncoderRight?.setFragmentTexture(textures[1].uvMTLvTexture, index: 1)
+        
+        // 设置顶点缓冲区、绘制
+        renderEncoderRight?.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoderRight?.endEncoding()
+        
+        
+        commandBuffer.commit()
+        testLeftLayer?.nextDrawable()?.present()
+        testRightLayer?.nextDrawable()?.present()
+        
+        commandBuffer.waitUntilCompleted()
+        
+        //        guard let blitCommandEncoder = commandBuffer.makeBlitCommandEncoder() else {
+        //            print("Could not create a blit command encoder")
+        //            return
+        //        }
+        
+        //        if test {
+        //            testRender(textures: textures, blitCommandEncoder: blitCommandEncoder, commandBuffer: commandBuffer)
+        //        } else {
+        //            if textures.count > 0 {
+        //                blitCommandEncoder.copy(from: textures[0], to: leftEyeTexture)
+        //            }
+        //            if textures.count > 1 {
+        //                blitCommandEncoder.copy(from: textures[1], to: rightEyeTexture)
+        //            }
+        //
+        //            blitCommandEncoder.endEncoding()
+        //            commandBuffer.commit()
+        //        }
     }
     
     private func testRender(textures: [any MTLTexture],
                             blitCommandEncoder: any MTLBlitCommandEncoder,
                             commandBuffer: any MTLCommandBuffer) {
         
-//        let centerX = (textures[0].width - 100) / 2
-//        let centerY = (textures[0].height - 100) / 2
+        //        let centerX = (textures[0].width - 100) / 2
+        //        let centerY = (textures[0].height - 100) / 2
         
         if let left = testLeftLayer?.nextDrawable() {
             let region = MTLRegionMake2D(0, 0, left.texture.width, left.texture.height)
             
-//            blitCommandEncoder.copy(from: textures.first!, to: left.texture)
+            //            blitCommandEncoder.copy(from: textures.first!, to: left.texture)
             blitCommandEncoder.copy(from: textures[0], sourceSlice: 0, sourceLevel: 0, sourceOrigin: region.origin, sourceSize: region.size, to: left.texture, destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOriginMake(0, 0, 0))
-
+            
         }
         
         if let right = testRightLayer?.nextDrawable() {
             let region = MTLRegionMake2D(textures[0].width - right.texture.width, 0, right.texture.width, right.texture.height)
             if textures.count > 1 {
-//                blitCommandEncoder.copy(from: textures[1], to: right.texture)
+                //                blitCommandEncoder.copy(from: textures[1], to: right.texture)
                 blitCommandEncoder.copy(from: textures[1], sourceSlice: 0, sourceLevel: 0, sourceOrigin: region.origin, sourceSize: region.size, to: right.texture, destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOriginMake(0, 0, 0))
             } else if textures.count == 1 {
-//                blitCommandEncoder.copy(from: textures.first!, to: right.texture)
+                //                blitCommandEncoder.copy(from: textures.first!, to: right.texture)
                 blitCommandEncoder.copy(from: textures[0], sourceSlice: 0, sourceLevel: 0, sourceOrigin: region.origin, sourceSize: region.size, to: right.texture, destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOriginMake(0, 0, 0))
             }
         }
@@ -387,13 +480,13 @@ extension WLMp4Decoder { // 处理视频渲染
         
         testLeftLayer?.nextDrawable()?.present()
         testRightLayer?.nextDrawable()?.present()
-
+        
         commandBuffer.commit()
     }
 }
 
 extension WLMp4Decoder { // 处理 texture
-    func getTextures(cmSampleBuffer: CMSampleBuffer) -> [MTLTexture]? {
+    func getTextures(cmSampleBuffer: CMSampleBuffer) -> [WLMTLTexture]? {
         if let taggedBuffers = cmSampleBuffer.taggedBuffers {
             let result = handleTaggedBuffers(taggedBuffers)
             return result
@@ -407,7 +500,7 @@ extension WLMp4Decoder { // 处理 texture
         }
     }
     
-    private func handleTaggedBuffers(_ taggedBuffers: [CMTaggedBuffer]) -> [MTLTexture]? { // 处理 MVHEVC
+    private func handleTaggedBuffers(_ taggedBuffers: [CMTaggedBuffer]) -> [WLMTLTexture]? { // 处理 MVHEVC
         let leftEyeBuffer = taggedBuffers.first(where: {
             $0.tags.first(matchingCategory: .stereoView) == .stereoView(.leftEye)
         })?.buffer
@@ -431,7 +524,7 @@ extension WLMp4Decoder { // 处理 texture
         return nil
     }
     
-    private func getTextureCV(cvPixelBuffer: CVPixelBuffer) -> MTLTexture? {
+    private func getTextureCV(cvPixelBuffer: CVPixelBuffer) -> WLMTLTexture? {
         guard let device = device else {
             print("device 获取失败")
             return nil
@@ -450,10 +543,18 @@ extension WLMp4Decoder { // 处理 texture
         }
         
         
-        return CVMetalTextureGetTexture(metalTexture)
+        var wlMTLTexture = WLMTLTexture()
+        if let tmp = metalTexture.yCVMetalTexture {
+            wlMTLTexture.yMTLTexture = CVMetalTextureGetTexture(tmp)
+        }
+        
+        if let tmp = metalTexture.uvCVMetalTexture {
+            wlMTLTexture.uvMTLvTexture = CVMetalTextureGetTexture(tmp)
+        }
+        return wlMTLTexture
     }
     
-    private func getTexture(cmSampleBuffer: CMSampleBuffer) -> MTLTexture? {
+    private func getTexture(cmSampleBuffer: CMSampleBuffer) -> WLMTLTexture? {
         guard let device = device else {
             print("device 获取失败")
             return nil
@@ -475,22 +576,32 @@ extension WLMp4Decoder { // 处理 texture
             print("无法创建metalTexture纹理缓存")
             return nil
         }
-        let result = CVMetalTextureGetTexture(metalTexture)
-        return result
+        
+        var wlMTLTexture = WLMTLTexture()
+        if let tmp = metalTexture.yCVMetalTexture {
+            wlMTLTexture.yMTLTexture = CVMetalTextureGetTexture(tmp)
+        }
+        
+        if let tmp = metalTexture.uvCVMetalTexture {
+            wlMTLTexture.uvMTLvTexture = CVMetalTextureGetTexture(tmp)
+        }
+        return wlMTLTexture
     }
     
-    private func convert(cvPixelBuffer: CVPixelBuffer) ->  CVMetalTexture? {
+    
+    private func convert(cvPixelBuffer: CVPixelBuffer) -> WLCVMetalTexture? {
         guard let textureCache = metalTextureCache else {
             return nil
         }
         
         Test.test(cvPixelBuffer)
         
+        var wlCVMetalTexture = WLCVMetalTexture()
         let width = CVPixelBufferGetWidth(cvPixelBuffer)
         let height = CVPixelBufferGetHeight(cvPixelBuffer)
         
         // Specify pixel format based on your CVPixelBuffer
-        let pixelFormat = MTLPixelFormat.bgra8Unorm
+        let pixelFormat = MTLPixelFormat.r16Unorm
         
         var texture: CVMetalTexture?
         let status = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
@@ -503,14 +614,29 @@ extension WLMp4Decoder { // 处理 texture
                                                                0,
                                                                &texture)
         if status != kCVReturnSuccess {
-            return nil
+            wlCVMetalTexture.yCVMetalTexture = nil
+        } else {
+            wlCVMetalTexture.yCVMetalTexture = texture
         }
         
-        if texture == nil {
-            return nil
+        
+        var secondTexture: CVMetalTexture?
+        let secondStatus = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
+                                                                     textureCache,
+                                                                     cvPixelBuffer,
+                                                                     nil,
+                                                                     .rg16Unorm,
+                                                                     width / 2,
+                                                                     height / 2,
+                                                                     1,
+                                                                     &secondTexture)
+        if secondStatus != kCVReturnSuccess {
+            wlCVMetalTexture.uvCVMetalTexture = nil
+        } else {
+            wlCVMetalTexture.uvCVMetalTexture = secondTexture
         }
         
-        return texture!
+        return wlCVMetalTexture
     }
     
     private func createMetalTextureCache(device: MTLDevice) -> CVMetalTextureCache? {
@@ -523,4 +649,14 @@ extension WLMp4Decoder { // 处理 texture
         
         return textureCache
     }
+}
+
+struct WLCVMetalTexture {
+    var yCVMetalTexture: CVMetalTexture?
+    var uvCVMetalTexture: CVMetalTexture?
+}
+
+struct WLMTLTexture {
+    var yMTLTexture: MTLTexture?
+    var uvMTLvTexture: MTLTexture?
 }
