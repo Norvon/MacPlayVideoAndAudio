@@ -61,7 +61,7 @@ struct ContentView: View {
     @State private var leftLayer2 = MetalLayerHolder()
     @State private var rightLayer2 = MetalLayerHolder()
     
-    @State var w: CGFloat = 200
+    @State var w: CGFloat = 720
     @State var h: CGFloat = 720
     var body: some View {
         ZStack {
@@ -123,13 +123,20 @@ extension ContentView {
     func play() {
         decoder.test = true
         
-        decoder.initPlayer(url: Bundle.main.url(forResource: "8153", withExtension: "mov")!, identifier: 0)
+        decoder.initPlayer(url: Bundle.main.url(forResource: "t", withExtension: "mp4")!,
+                           secondUrl: Bundle.main.url(forResource: "8153", withExtension: "mov")!,
+                           identifier: 0)
+        
         decoder.setTexture(leftEyeTexture: leftLayer.metalLayer?.nextDrawable()?.texture,
-                           rightEyeTexture: rightLayer.metalLayer?.nextDrawable()?.texture)
-        decoder.willStartCallback = { _, _, _, _ in
-            
+                           rightEyeTexture: rightLayer.metalLayer?.nextDrawable()?.texture,
+                           secondLeftEyeTexture: leftLayer2.metalLayer?.nextDrawable()?.texture,
+                           secondRightEyeTexture: rightLayer2.metalLayer?.nextDrawable()?.texture)
+        decoder.willStartCallback = {[weak decoder] _, _, _, _ in
+            guard let decoder = decoder else { return }
             decoder.testLeftLayer = leftLayer.metalLayer
             decoder.testRightLayer = rightLayer.metalLayer
+            decoder.testSecondLeftLayer = leftLayer2.metalLayer
+            decoder.testSecondRightLayer = rightLayer2.metalLayer
             decoder.play()
         }
 

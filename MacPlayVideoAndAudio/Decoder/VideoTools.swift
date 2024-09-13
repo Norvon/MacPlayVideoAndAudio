@@ -146,7 +146,7 @@ struct VideoTools {
         guard
             let (naturalSize, formatDescriptions, mediaCharacteristics) =
                 try? await videoTrack.load(.naturalSize, .formatDescriptions, .mediaCharacteristics),
-            let formatDescription = formatDescriptions.first
+            let _ = formatDescriptions.first
         else {
             print("Failed to load video properties")
             return nil
@@ -254,13 +254,13 @@ struct VideoTools {
         projectionType: CMProjectionType?, horizontalFieldOfView: Float?
     ) {
         
-        var projectionType: CMProjectionType?
+        let projectionType: CMProjectionType? = nil
         var horizontalFieldOfView: Float?
         
         if let extensions = CMFormatDescriptionGetExtensions(formatDescription) as Dictionary? {
             
             // FYI that the projection kind key is undocumented by Apple as of this writing.
-            if let projectionKind = extensions["ProjectionKind" as CFString] as? String {
+            if extensions["ProjectionKind" as CFString] is String {
 //                projectionType = CMProjectionType(fromString: projectionKind) ?? .rectangular
             } else {
                 print("ProjectionKind not found in format description extensions.")
