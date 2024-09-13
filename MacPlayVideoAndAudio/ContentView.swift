@@ -100,7 +100,7 @@ struct ContentView: View {
                     }
                     
                     Button("seek") {
-                        let time = CMTime(seconds: 50, preferredTimescale: 1)
+                        let time = CMTime(seconds: 120, preferredTimescale: 1)
                         decoder.seek(time: time)
                     }
                     
@@ -123,16 +123,20 @@ extension ContentView {
     func play() {
         decoder.test = true
         
-        decoder.initPlayer(url: Bundle.main.url(forResource: "t", withExtension: "mp4")!,
-                           secondUrl: Bundle.main.url(forResource: "8153", withExtension: "mov")!,
+        decoder.initPlayer(url: Bundle.main.url(forResource: "8152", withExtension: "mov")!,
+                           secondUrl: Bundle.main.url(forResource: "8152", withExtension: "mov")!,
+                           secondStart: CMTime(seconds: 5, preferredTimescale: 1),
+                           secondSeek: CMTime(seconds: 5, preferredTimescale: 1),
                            identifier: 0)
         
-        decoder.setTexture(leftEyeTexture: leftLayer.metalLayer?.nextDrawable()?.texture,
-                           rightEyeTexture: rightLayer.metalLayer?.nextDrawable()?.texture,
-                           secondLeftEyeTexture: leftLayer2.metalLayer?.nextDrawable()?.texture,
-                           secondRightEyeTexture: rightLayer2.metalLayer?.nextDrawable()?.texture)
-        decoder.willStartCallback = {[weak decoder] _, _, _, _ in
+        decoder.willStartCallback = {[weak decoder] _, _, _, _, _, _, _ in
             guard let decoder = decoder else { return }
+            
+            decoder.setTexture(leftEyeTexture: leftLayer.metalLayer?.nextDrawable()?.texture,
+                               rightEyeTexture: rightLayer.metalLayer?.nextDrawable()?.texture,
+                               secondLeftEyeTexture: leftLayer2.metalLayer?.nextDrawable()?.texture,
+                               secondRightEyeTexture: rightLayer2.metalLayer?.nextDrawable()?.texture)
+            
             decoder.testLeftLayer = leftLayer.metalLayer
             decoder.testRightLayer = rightLayer.metalLayer
             decoder.testSecondLeftLayer = leftLayer2.metalLayer

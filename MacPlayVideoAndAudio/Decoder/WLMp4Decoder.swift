@@ -12,7 +12,7 @@ import CoreFoundation
 import RealityKit
 
 class WLMp4Decoder: NSObject {
-    @objc var willStartCallback: ((_ width: Int, _ height: Int, _ fps: Int, _ format: Int) -> Void)?
+    @objc var willStartCallback: ((_ width: Int, _ height: Int, _ fps: Int, _ secondWidth: Int, _ secondHeight: Int, _ secondFps: Int, _ format: Int) -> Void)?
     @objc var playCompleteCallback: (() -> Void)?
     @objc var idx: Int = 0
     private var audioPlayer: AVPlayer?
@@ -20,11 +20,14 @@ class WLMp4Decoder: NSObject {
     private let device = MTLCreateSystemDefaultDevice()
     private var url: URL?
     private var secondUrl: URL?
+    private var secondStart: CMTime = .zero
+    private var secondSeek: CMTime = .zero
     
     private var metalTextureCache: CVMetalTextureCache?
     private let videoProcessingQueue: DispatchQueue = DispatchQueue(label: "com.wl.audio.obs.\(UUID().uuidString)", qos: .userInitiated)
     
     private var videoInfo: VideoInfo = VideoInfo()
+    private var secondVideoInfo: VideoInfo = VideoInfo()
     private var firstAssetReader: AVAssetReader?
     private var secondAssetReader: AVAssetReader?
     private var timeObserverToken: Any?
@@ -111,45 +114,54 @@ class WLMp4Decoder: NSObject {
             timeObserverToken = nil
         }
         pause()
-        audioPlayer?.seek(to: time) {success in
+        audioPlayer?.seek(to: time) {[weak self] success in
+            guard let self = self else { return }
             if success {
                 Task {
-                    let _ = await self.videoSeek(to: time)
+                    let offset = time.seconds - (self.secondStart.seconds + self.secondSeek.seconds)
+                    if  offset > 0  {
+                        self.secondAssetReader = await self.videoSeek(CMTime(seconds: offset + self.secondSeek.seconds, preferredTimescale: 1), self.secondUrl, self.secondAssetReader, self.secondVideoInfo)
+                        self.secondAssetReader?.outputs.first?.copyNextSampleBuffer()
+                    }
+                    
+                    if let reader = await self.videoSeek(time, self.url, self.firstAssetReader, self.videoInfo) {
+                        self.firstAssetReader = reader
+                        self.setupTimeObserver()
+                    }
                 }
             }
         }
     }
-    private func videoSeek(to time: CMTime) async -> Bool {
-        #warning("needChange")
-//        assetReader?.cancelReading()
-//        
-//        guard let url = url else { return false}
-//        let asset = AVURLAsset(url: url)
-//        guard let newAssetReader = try? AVAssetReader(asset: asset) else { return false }
-//        self.assetReader = newAssetReader
-//        guard let track = try? await asset.loadTracks(withMediaType: .video).first else {
-//            print("Failed to get video info")
-//            return false
-//        }
-//        let videoOutput = AVAssetReaderTrackOutput(track: track, outputSettings: getOutputSettings(videoInfo))
-//        if(newAssetReader.canAdd(videoOutput)){
-//            newAssetReader.add(videoOutput)
-//        }
-//        newAssetReader.timeRange = CMTimeRange(start: time, duration: .positiveInfinity)
-//        if newAssetReader.startReading() {
-//            print("开始读取")
-//            assetReader = newAssetReader
-//        } else {
-//            print("无法启动阅读器: \(newAssetReader.error.debugDescription)")
-//            print("文件是否存在：\(FileManager.default.fileExists(atPath: url.path()))")
-//            newAssetReader.cancelReading()
-//        }
-//        setupTimeObserver()
-        return true
+    private func videoSeek(_ time: CMTime , _ url: URL?, _ assetReader: AVAssetReader?, _ videoInfo: VideoInfo) async -> AVAssetReader? {
+        assetReader?.cancelReading()
+        guard let url = url else { return nil }
+        let asset = AVURLAsset(url: url)
+        guard let newAssetReader = try? AVAssetReader(asset: asset) else { return nil }
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first else {
+            print("Failed to get video info")
+            return nil
+        }
+        let videoOutput = AVAssetReaderTrackOutput(track: track, outputSettings: getOutputSettings(videoInfo))
+        if(newAssetReader.canAdd(videoOutput)){
+            newAssetReader.add(videoOutput)
+        } else {
+            return nil
+        }
+        newAssetReader.timeRange = CMTimeRange(start: time, duration: .positiveInfinity)
+        if newAssetReader.startReading() {
+            print("开始读取")
+            return newAssetReader
+        } else {
+            print("无法启动阅读器: \(newAssetReader.error.debugDescription)")
+            print("文件是否存在：\(FileManager.default.fileExists(atPath: url.path()))")
+            newAssetReader.cancelReading()
+        }
+        
+        return nil
     }
     
     
-    @objc func initPlayer(url: URL, secondUrl: URL, identifier:UInt64) {
+    @objc func initPlayer(url: URL, secondUrl: URL, secondStart: CMTime, secondSeek: CMTime, identifier:UInt64) {
         _identifier = identifier
         audioPlayer?.pause()
         firstAssetReader = nil
@@ -158,6 +170,8 @@ class WLMp4Decoder: NSObject {
         
         self.url = url
         self.secondUrl = secondUrl
+        self.secondStart = secondStart
+        self.secondSeek = secondSeek
         setIntendedSpatialExperience()
         handleInit()
     }
@@ -262,7 +276,7 @@ extension WLMp4Decoder { // 处理视频渲染
                 return
             }
             
-            await handleSecondVideo()
+            await handleSecondVideo(secondSeek)
             
             if await handleAudio(asset) == false {
                 return
@@ -283,9 +297,9 @@ extension WLMp4Decoder { // 处理视频渲染
                 print("文件是否存在：\(FileManager.default.fileExists(atPath: url.path()))")
                 assetReader.cancelReading()
             }
-            
+            assetReader.outputs.first?.copyNextSampleBuffer()
             setupTimeObserver()
-            self.willStartCallback?(Int(videoInfo.size.width), Int(videoInfo.size.height), Int(videoInfo.fps),Int(9))
+            self.willStartCallback?(Int(videoInfo.size.width), Int(videoInfo.size.height), Int(videoInfo.fps), Int(secondVideoInfo.size.width), Int(secondVideoInfo.size.height), Int(secondVideoInfo.fps), Int(9))
         }
     }
     
@@ -344,7 +358,7 @@ extension WLMp4Decoder { // 处理视频渲染
         return true
     }
     
-    private func handleSecondVideo() async {
+    private func handleSecondVideo(_ seekTime: CMTime = .zero) async {
         guard let url = secondUrl else { return }
         let asset = AVURLAsset(url: url)
         guard let readerAndVideoInfo = await getReaderAndVideoInfo(asset) else {
@@ -354,6 +368,9 @@ extension WLMp4Decoder { // 处理视频渲染
         
         let assetReader = readerAndVideoInfo.0
         self.secondAssetReader = assetReader
+        self.secondVideoInfo = readerAndVideoInfo.1
+        
+        assetReader.timeRange = CMTimeRange(start: seekTime, duration: .positiveInfinity)
         
         if assetReader.startReading() {
             print("开始读取")
@@ -362,6 +379,7 @@ extension WLMp4Decoder { // 处理视频渲染
             print("文件是否存在：\(FileManager.default.fileExists(atPath: url.path()))")
             assetReader.cancelReading()
         }
+        assetReader.outputs.first?.copyNextSampleBuffer()
     }
     
     @objc func playerDidFinishPlaying() {
@@ -389,7 +407,12 @@ extension WLMp4Decoder { // 处理视频渲染
             return
         }
         
-        let secondSampleBuffer = getNextSampleBuffer(time, secondAssetReader, false)
+        var secondSampleBuffer: CMSampleBuffer? = nil
+        let offset = time.seconds - secondStart.seconds
+        if offset >= 0 {
+            secondSampleBuffer = getNextSampleBuffer(CMTime(seconds: offset, preferredTimescale: 1), secondAssetReader, false)
+            print("time.seconds = \(time.seconds)")
+        }
         render(sampleBuffer, secondSampleBuffer)
     }
     
