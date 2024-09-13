@@ -256,21 +256,21 @@ extension WLMp4Decoder { // 处理视频渲染
                 return
             }
             
-            let audioItem = AVPlayerItem(asset: asset)
-            audioPlayer = AVPlayer(playerItem: audioItem)
+//            let audioItem = AVPlayerItem(asset: asset)
+//            audioPlayer = AVPlayer(playerItem: audioItem)
             
-            //            let composition = AVMutableComposition()
-            //            if let audioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
-            //                do {
-            //                    try audioTrack.insertTimeRange(CMTimeRange(start: .zero, duration: asset.duration),
-            //                                                   of: assetAudioTrack,
-            //                                                   at: .zero)
-            //                } catch {
-            //                    print("Error copying audio track: \(error)")
-            //                }
-            //            }
-            //            let audioItem = AVPlayerItem(asset: composition)
-            //            audioPlayer = AVPlayer(playerItem: audioItem)
+            let composition = AVMutableComposition()
+            if let audioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+                do {
+                    try audioTrack.insertTimeRange(CMTimeRange(start: .zero, duration: asset.duration),
+                                                   of: assetAudioTrack,
+                                                   at: .zero)
+                } catch {
+                    print("Error copying audio track: \(error)")
+                }
+            }
+            let audioItem = AVPlayerItem(asset: composition)
+            audioPlayer = AVPlayer(playerItem: audioItem)
             
             NotificationCenter.default.addObserver(
                 self,
