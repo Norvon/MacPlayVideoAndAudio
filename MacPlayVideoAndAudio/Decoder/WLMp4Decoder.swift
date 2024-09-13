@@ -9,9 +9,6 @@ import AVFoundation
 import VideoToolbox
 import SwiftUI
 import CoreFoundation
-import RealityKit
-import ARKit
-//import PolySpatialReality Kit
 
 class WLMp4Decoder: NSObject {
     @objc var willStartCallback: ((_ width: Int, _ height: Int, _ fps: Int, _ format: Int) -> Void)?
@@ -32,7 +29,7 @@ class WLMp4Decoder: NSObject {
     private var leftEyeTexture: MTLTexture?
     private var rightEyeTexture: MTLTexture?
     
-    let test = false
+    var test = false
     var testLeftLayer: CAMetalLayer?
     var testRightLayer: CAMetalLayer?
     
@@ -51,7 +48,7 @@ class WLMp4Decoder: NSObject {
             return audioPlayer?.currentTime().seconds ?? 0.0
         }
     }
-    @objc func setTexture(leftEyeTexture: MTLTexture, rightEyeTexture: MTLTexture) {
+    @objc func setTexture(leftEyeTexture: MTLTexture?, rightEyeTexture: MTLTexture?) {
         self.leftEyeTexture = leftEyeTexture
         self.rightEyeTexture = rightEyeTexture
     }
@@ -90,7 +87,11 @@ class WLMp4Decoder: NSObject {
             break
         }
 #endif
+#if LGTEST
+        outputSettings[kCVPixelBufferPixelFormatTypeKey as String] = Int(kCVPixelFormatType_32BGRA)
+#else
         outputSettings[kCVPixelBufferPixelFormatTypeKey as String] = Int(kCVPixelFormatType_64RGBAHalf)
+#endif
         outputSettings[kCVPixelBufferMetalCompatibilityKey as String] = true
         
         return outputSettings
@@ -173,12 +174,10 @@ class WLMp4Decoder: NSObject {
         self.metalTextureCache = nil
     }
     
-    @Environment(\.openWindow) var openWindow
-    @Environment(\.dismissWindow) var dismissWindow
-    @Environment(\.openImmersiveSpace) var openImmersiveSpace
-    @Environment(\.dismissImmersiveSpace) var dismissImmersiveSpace
-    
     @objc func setIntendedSpatialExperience() {
+#if LGTEST
+        print("")
+#else
         Task { @MainActor in
             let experience: AVAudioSessionSpatialExperience
             do {
@@ -194,6 +193,7 @@ class WLMp4Decoder: NSObject {
                 return
             }
         }
+#endif
     }
 }
 
@@ -217,17 +217,6 @@ extension WLMp4Decoder { // 处理视频渲染
                 print("Failed to get video info")
                 return
             }
-            
-            //            outputSettings =
-            //            var decompressionProperties: [String: Any] = [:]
-            //            decompressionProperties[kVTDecompressionPropertyKey_RequestedMVHEVCVideoLayerIDs as String] = [0, 1]
-            //
-            //            var outputSettings: [String: Any] = [:]
-            //            if videoInfo.isSpatial { // 处理 MVHEVC
-            //                outputSettings[AVVideoDecompressionPropertiesKey] = decompressionProperties
-            //            }
-            //            outputSettings[kCVPixelBufferPixelFormatTypeKey as String] = kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
-            //            outputSettings[kCVPixelBufferMetalCompatibilityKey as String] = true
             
             guard let track = try? await asset.loadTracks(withMediaType: .video).first else {
                 print("Failed to get video info")
@@ -256,9 +245,6 @@ extension WLMp4Decoder { // 处理视频渲染
                 return
             }
             
-//            let audioItem = AVPlayerItem(asset: asset)
-//            audioPlayer = AVPlayer(playerItem: audioItem)
-            
             let composition = AVMutableComposition()
             if let audioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
                 do {
@@ -269,6 +255,7 @@ extension WLMp4Decoder { // 处理视频渲染
                     print("Error copying audio track: \(error)")
                 }
             }
+            
             let audioItem = AVPlayerItem(asset: composition)
             audioPlayer = AVPlayer(playerItem: audioItem)
             
@@ -279,8 +266,8 @@ extension WLMp4Decoder { // 处理视频渲染
                 object: audioItem
             )
             
-            
-            //            audiPlayer?.play()
+#if LGTEST
+#else
             if let audioPlayer = audioPlayer {
                 var videoPlayerComponent = VideoPlayerComponent(avPlayer: audioPlayer)
                 videoPlayerComponent.desiredViewingMode = VideoPlaybackController.ViewingMode.stereo
@@ -288,6 +275,7 @@ extension WLMp4Decoder { // 处理视频渲染
                 
                 AlphaViewManager.shared.entities[idx].components.set(videoPlayerComponent)
             }
+#endif
             
             if assetReader.startReading() {
                 print("开始读取")
@@ -388,47 +376,54 @@ extension WLMp4Decoder { // 处理视频渲染
             return
         }
         
-        if textures.count >= 1 {
-            if (textures[0].width == leftEyeTexture.width && textures[0].height == leftEyeTexture.height){
-                blitCommandEncoder.copy(from: textures[0], to: leftEyeTexture)
-            }
-            else{
-                print("idx = \(idx)左眼RT(\(textures[0].width)-\(textures[0].height))----(\(leftEyeTexture.width)-\(leftEyeTexture.height))")
-            }
-            
-        }
-        if textures.count > 1 {
-            if (textures[1].width == rightEyeTexture.width && textures[1].height == rightEyeTexture.height){
-                blitCommandEncoder.copy(from: textures[1], to: rightEyeTexture)
-            }
-            else{
-                print("左眼RT(\(textures[1].width)-\(textures[1].height))----(\(rightEyeTexture.width)-\(rightEyeTexture.height))")
-            }
-            
-        }
-        
-        
         if test {
             testRender(textures: textures, blitCommandEncoder: blitCommandEncoder, commandBuffer: commandBuffer)
         } else {
+            if textures.count >= 1 {
+                if (textures[0].width == leftEyeTexture.width && textures[0].height == leftEyeTexture.height){
+                    blitCommandEncoder.copy(from: textures[0], to: leftEyeTexture)
+                }
+                else{
+                    print("idx = \(idx)左眼RT(\(textures[0].width)-\(textures[0].height))----(\(leftEyeTexture.width)-\(leftEyeTexture.height))")
+                }
+                
+            }
+            if textures.count > 1 {
+                if (textures[1].width == rightEyeTexture.width && textures[1].height == rightEyeTexture.height){
+                    blitCommandEncoder.copy(from: textures[1], to: rightEyeTexture)
+                }
+                else{
+                    print("左眼RT(\(textures[1].width)-\(textures[1].height))----(\(rightEyeTexture.width)-\(rightEyeTexture.height))")
+                }
+                
+            }
             blitCommandEncoder.endEncoding()
             commandBuffer.commit()
         }
-        print("idx:\(self.idx) currentTime: \(currentTime)")
     }
     
     private func testRender(textures: [any MTLTexture],
                             blitCommandEncoder: any MTLBlitCommandEncoder,
                             commandBuffer: any MTLCommandBuffer) {
+        
+        let renderW = Int(testRightLayer!.drawableSize.width)
+        let renderH = Int(testRightLayer!.drawableSize.height)
+        
+        let bufferW = textures.first!.width
+        let bufferH = textures.first!.height
+        
+        
+        let region = MTLRegionMake2D((bufferW - renderW) / 2, (bufferH - renderH) / 2, renderW, renderH)
+        
         if let left = testLeftLayer?.nextDrawable() {
-            blitCommandEncoder.copy(from: textures.first!, to: left.texture)
+            blitCommandEncoder.copy(from: textures[0], sourceSlice: 0, sourceLevel: 0, sourceOrigin: region.origin, sourceSize: region.size, to: left.texture, destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOriginMake(0, 0, 0))
         }
         
         if let right = testRightLayer?.nextDrawable() {
             if textures.count > 1 {
-                blitCommandEncoder.copy(from: textures[1], to: right.texture)
+                blitCommandEncoder.copy(from: textures[1], sourceSlice: 0, sourceLevel: 0, sourceOrigin: region.origin, sourceSize: region.size, to: right.texture, destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOriginMake(0, 0, 0))
             } else if textures.count == 1 {
-                blitCommandEncoder.copy(from: textures.first!, to: right.texture)
+                blitCommandEncoder.copy(from: textures[0], sourceSlice: 0, sourceLevel: 0, sourceOrigin: region.origin, sourceSize: region.size, to: right.texture, destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOriginMake(0, 0, 0))
             }
         }
         
@@ -538,7 +533,11 @@ extension WLMp4Decoder { // 处理 texture
         let height = CVPixelBufferGetHeight(cvPixelBuffer)
         
         // Specify pixel format based on your CVPixelBuffer
+#if LGTEST
+        let pixelFormat = MTLPixelFormat.bgra8Unorm
+#else
         let pixelFormat = MTLPixelFormat.rg11b10Float
+#endif
         
         var texture: CVMetalTexture?
         let status = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault,

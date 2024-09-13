@@ -61,8 +61,8 @@ struct ContentView: View {
     @State private var leftLayer2 = MetalLayerHolder()
     @State private var rightLayer2 = MetalLayerHolder()
     
-    @State var w: CGFloat = 4096
-    @State var h: CGFloat = 2048
+    @State var w: CGFloat = 200
+    @State var h: CGFloat = 720
     var body: some View {
         ZStack {
             HStack {
@@ -73,11 +73,11 @@ struct ContentView: View {
                 PlayerView(layerHolder: $rightLayer)
                     .frame(width: w, height: h)
                 
-//                PlayerView(layerHolder: $leftLayer2)
-//                    .frame(width: w, height: h)
-//                
-//                PlayerView(layerHolder: $rightLayer2)
-//                    .frame(width: w, height: h)
+                PlayerView(layerHolder: $leftLayer2)
+                    .frame(width: w, height: h)
+                
+                PlayerView(layerHolder: $rightLayer2)
+                    .frame(width: w, height: h)
                 Spacer()
             }
             
@@ -121,12 +121,22 @@ struct ContentView: View {
 
 extension ContentView {
     func play() {
-        decoder.testLeftLayer = leftLayer.metalLayer
-        decoder.testRightLayer = rightLayer.metalLayer
+        decoder.test = true
         
-        decoder.play(url: Bundle.main.url(forResource: "fail", withExtension: "mov")!,
-                     leftEyeTexture: leftLayer.metalLayer?.nextDrawable()?.texture,
-                     rightEyeTexture: rightLayer.metalLayer?.nextDrawable()?.texture)
+        decoder.initPlayer(url: Bundle.main.url(forResource: "8153", withExtension: "mov")!, identifier: 0)
+        decoder.setTexture(leftEyeTexture: leftLayer.metalLayer?.nextDrawable()?.texture,
+                           rightEyeTexture: rightLayer.metalLayer?.nextDrawable()?.texture)
+        decoder.willStartCallback = { _, _, _, _ in
+            
+            decoder.testLeftLayer = leftLayer.metalLayer
+            decoder.testRightLayer = rightLayer.metalLayer
+            decoder.play()
+        }
+
+        
+//        decoder.play(url: Bundle.main.url(forResource: "fail", withExtension: "mov")!,
+//                     leftEyeTexture: leftLayer.metalLayer?.nextDrawable()?.texture,
+//                     rightEyeTexture: rightLayer.metalLayer?.nextDrawable()?.texture)
         
 //        decoder2.testLeftLayer = leftLayer2.metalLayer
 //        decoder2.testRightLayer = rightLayer2.metalLayer

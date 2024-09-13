@@ -7,6 +7,7 @@
 
 import Foundation
 import CoreMedia
+import AVFoundation
 
 class VideoInfo {
     @Published var isSpatial: Bool = false
