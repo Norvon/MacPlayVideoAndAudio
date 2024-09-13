@@ -10,12 +10,13 @@ import VideoToolbox
 import SwiftUI
 import CoreFoundation
 import RealityKit
-
+import ARKit
+//import PolySpatialReality Kit
 
 class WLMp4Decoder: NSObject {
-    @objc var willStartCallback: ((_ width: Int, _ height: Int, _ fps: Int) -> Void)?
-    @objc var playCompleteCallback: ((Bool) -> Void)?
-    
+    @objc var willStartCallback: ((_ width: Int, _ height: Int, _ fps: Int, _ format: Int) -> Void)?
+    @objc var playCompleteCallback: (() -> Void)?
+    @objc var idx: Int = 0
     private var audioPlayer: AVPlayer?
     private let device = MTLCreateSystemDefaultDevice()
     private var url: URL?
@@ -31,23 +32,127 @@ class WLMp4Decoder: NSObject {
     private var leftEyeTexture: MTLTexture?
     private var rightEyeTexture: MTLTexture?
     
-    let test = true
+    let test = false
     var testLeftLayer: CAMetalLayer?
     var testRightLayer: CAMetalLayer?
     
-
-    @objc func play(url: URL, leftEyeTexture: MTLTexture?, rightEyeTexture: MTLTexture?) {
+    private var _identifier:UInt64 = 0;
+    @objc var volume: Float { // 音量范围（0 - 1）
+        set {
+            audioPlayer?.volume = newValue
+        }
+        get {
+            return audioPlayer?.volume ?? 0
+        }
+    }
+    
+    @objc var currentTime :Double {
+        get {
+            return audioPlayer?.currentTime().seconds ?? 0.0
+        }
+    }
+    @objc func setTexture(leftEyeTexture: MTLTexture, rightEyeTexture: MTLTexture) {
+        self.leftEyeTexture = leftEyeTexture
+        self.rightEyeTexture = rightEyeTexture
+    }
+    
+    private func getOutputSettings(_ videoInfo: VideoInfo) -> [String: Any] {
+        var decompressionProperties: [String: Any] = [:]
+        decompressionProperties[kVTDecompressionPropertyKey_RequestedMVHEVCVideoLayerIDs as String] = [0, 1]
+        
+        var outputSettings: [String: Any] = [:]
+        if videoInfo.isSpatial { // 处理 MVHEVC
+            outputSettings[AVVideoDecompressionPropertiesKey] = decompressionProperties
+        }
+#if targetEnvironment(simulator)
+        //        outputSettings[AVVideoColorPropertiesKey] = [
+        //            AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_2020,
+        //            AVVideoTransferFunctionKey: AVVideoTransferFunction_Linear,
+        //            AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_2020
+        //        ]
+#else
+        // 判断 Color Primaries
+        switch videoInfo.colorPrimaries {
+        case AVVideoColorPrimaries_ITU_R_2020:
+            outputSettings[AVVideoColorPropertiesKey] = [
+                AVVideoTransferFunctionKey: AVVideoTransferFunction_Linear,
+                
+                AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_2020,
+                AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_2020
+            ]
+        default:
+            outputSettings[AVVideoColorPropertiesKey] = [
+                AVVideoTransferFunctionKey: AVVideoTransferFunction_Linear,
+                
+                AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+                AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
+            ]
+            break
+        }
+#endif
+        outputSettings[kCVPixelBufferPixelFormatTypeKey as String] = Int(kCVPixelFormatType_64RGBAHalf)
+        outputSettings[kCVPixelBufferMetalCompatibilityKey as String] = true
+        
+        return outputSettings
+    }
+    
+    
+    @objc func seek(time: CMTime) {
+        if let token = timeObserverToken {
+            audioPlayer?.removeTimeObserver(token)
+            timeObserverToken = nil
+        }
+        pause()
+        audioPlayer?.seek(to: time) {success in
+            if success {
+                Task {
+                    let _ = await self.videoSeek(to: time)
+                }
+            }
+        }
+    }
+    private func videoSeek(to time: CMTime) async -> Bool {
+        assetReader?.cancelReading()
+        guard let url = url else { return false}
+        let asset = AVURLAsset(url: url)
+        guard let newAssetReader = try? AVAssetReader(asset: asset) else { return false }
+        self.assetReader = newAssetReader
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first else {
+            print("Failed to get video info")
+            return false
+        }
+        let videoOutput = AVAssetReaderTrackOutput(track: track, outputSettings: getOutputSettings(videoInfo))
+        if(newAssetReader.canAdd(videoOutput)){
+            newAssetReader.add(videoOutput)
+        }
+        newAssetReader.timeRange = CMTimeRange(start: time, duration: .positiveInfinity)
+        self.videoOutput = videoOutput
+        if newAssetReader.startReading() {
+            print("开始读取")
+            assetReader = newAssetReader
+        } else {
+            print("无法启动阅读器: \(newAssetReader.error.debugDescription)")
+            print("文件是否存在：\(FileManager.default.fileExists(atPath: url.path()))")
+            newAssetReader.cancelReading()
+        }
+        setupTimeObserver()
+        return true
+    }
+    
+    
+    @objc func initPlayer(url: URL,identifier:UInt64) {
+        _identifier = identifier
         audioPlayer?.pause()
         videoOutput = nil
         assetReader = nil
         audioPlayer = nil
         
         self.url = url
-        self.leftEyeTexture = leftEyeTexture
-        self.rightEyeTexture = rightEyeTexture
-
         setIntendedSpatialExperience()
         handleInit()
+    }
+    @objc func play(){
+        audioPlayer?.play()
     }
     
     @objc func pause() {
@@ -64,101 +169,37 @@ class WLMp4Decoder: NSObject {
         seek(time: .zero)
     }
     
-    @objc func setIntendedSpatialExperience() {
-        Task { @MainActor in
-//            for item in UIApplication.shared.connectedScenes {
-//                if item.session.role == .immersiveSpaceApplication {
-//                    let experience: AVAudioSessionSpatialExperience
-//                    experience = .headTracked(soundStageSize: .large, anchoringStrategy: .scene(identifier: item.session.persistentIdentifier))
-//                    do {
-//                        try AVAudioSession.sharedInstance().setIntendedSpatialExperience(experience)
-//                    } catch {
-//                        print("setIntendedSpatialExperience error")
-//                        return
-//                    }
-//                    print("setIntendedSpatialExperience success")
-//                    return
-//                }
-//            }
-            print("setIntendedSpatialExperience error ")
-            return
-        }
+    private func clearCache() {
+        self.metalTextureCache = nil
     }
     
-    @objc func seek(time: CMTime) {
-        guard let audioPlayer = audioPlayer else { return }
-        if let token = timeObserverToken {
-            audioPlayer.removeTimeObserver(token)
-            timeObserverToken = nil
-        }
-
-        pause()
-        audioPlayer.seek(to: time) {success in
-            if success {
-                Task { @MainActor in
-                    let _ = await self.videoSeek(to: audioPlayer.currentTime())
-                    self.resume()
-                }
+    @Environment(\.openWindow) var openWindow
+    @Environment(\.dismissWindow) var dismissWindow
+    @Environment(\.openImmersiveSpace) var openImmersiveSpace
+    @Environment(\.dismissImmersiveSpace) var dismissImmersiveSpace
+    
+    @objc func setIntendedSpatialExperience() {
+        Task { @MainActor in
+            let experience: AVAudioSessionSpatialExperience
+            do {
+                experience = .headTracked(soundStageSize: .large, anchoringStrategy: .scene(identifier: "\(AlphaViewManager.shared.entities[self.idx].id)"))
+                try AVAudioSession.sharedInstance().setIntendedSpatialExperience(experience)
+                try AVAudioSession.sharedInstance().setCategory(AVAudioSession.Category.playback, mode: AVAudioSession.Mode.moviePlayback, options: [])
+                try AVAudioSession.sharedInstance().setActive(true)
+                
+                print("setIntendedSpatialExperience success")
+                return
+            } catch {
+                print("setIntendedSpatialExperience error")
+                return
             }
         }
     }
 }
 
 extension WLMp4Decoder { // 处理视频渲染
-    
-    private func videoSeek(to time: CMTime) async -> Bool {
-        assetReader?.cancelReading()
-        
-        guard let url = url else { return false}
-        let asset = AVURLAsset(url: url)
-        guard let newAssetReader = try? AVAssetReader(asset: asset) else { return false }
-        self.assetReader = newAssetReader
-        
-        guard let track = try? await asset.loadTracks(withMediaType: .video).first else {
-            print("Failed to get video info")
-            return false
-        }
-        
-        let videoOutput = AVAssetReaderTrackOutput(track: track, outputSettings: getOutputSettings(videoInfo))
-        if(newAssetReader.canAdd(videoOutput)){
-            newAssetReader.add(videoOutput)
-        }
-        
-        newAssetReader.timeRange = CMTimeRange(start: time, duration: .positiveInfinity)
-        
-        self.videoOutput = videoOutput
-        
-        
-        if newAssetReader.startReading() {
-            print("开始读取")
-            assetReader = newAssetReader
-        } else {
-            print("无法启动阅读器: \(newAssetReader.error.debugDescription)")
-            print("文件是否存在：\(FileManager.default.fileExists(atPath: url.path()))")
-            newAssetReader.cancelReading()
-        }
-        
-        setupTimeObserver()
-        
-        return true
-    }
-    
-    private func getOutputSettings(_ videoInfo: VideoInfo) -> [String: Any] {
-        var decompressionProperties: [String: Any] = [:]
-        decompressionProperties[kVTDecompressionPropertyKey_RequestedMVHEVCVideoLayerIDs as String] = [0, 1]
-        
-        var outputSettings: [String: Any] = [:]
-        if videoInfo.isSpatial { // 处理 MVHEVC
-            outputSettings[AVVideoDecompressionPropertiesKey] = decompressionProperties
-        }
-        outputSettings[kCVPixelBufferPixelFormatTypeKey as String] = kCVPixelFormatType_32BGRA
-        outputSettings[kCVPixelBufferMetalCompatibilityKey as String] = true
-        return outputSettings
-    }
-    
     private func handleInit() {
         Task { @MainActor in
-            
             if let token = timeObserverToken {
                 audioPlayer?.removeTimeObserver(token)
                 timeObserverToken = nil
@@ -171,12 +212,22 @@ extension WLMp4Decoder { // 处理视频渲染
                 return
             }
             self.assetReader = assetReader
-    
+            
             guard let videoInfo = await VideoTools.getVideoInfo(asset: asset) else {
                 print("Failed to get video info")
                 return
             }
-
+            
+            //            outputSettings =
+            //            var decompressionProperties: [String: Any] = [:]
+            //            decompressionProperties[kVTDecompressionPropertyKey_RequestedMVHEVCVideoLayerIDs as String] = [0, 1]
+            //
+            //            var outputSettings: [String: Any] = [:]
+            //            if videoInfo.isSpatial { // 处理 MVHEVC
+            //                outputSettings[AVVideoDecompressionPropertiesKey] = decompressionProperties
+            //            }
+            //            outputSettings[kCVPixelBufferPixelFormatTypeKey as String] = kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+            //            outputSettings[kCVPixelBufferMetalCompatibilityKey as String] = true
             
             guard let track = try? await asset.loadTracks(withMediaType: .video).first else {
                 print("Failed to get video info")
@@ -184,58 +235,60 @@ extension WLMp4Decoder { // 处理视频渲染
             }
             
             if let fps = try? await track.load(.nominalFrameRate) {
-                videoInfo.fps = Int(fps)
+                videoInfo.fps = fps
             }
-            
-            self.willStartCallback?(Int(videoInfo.size.width), Int(videoInfo.size.height), videoInfo.fps)
             
             if videoInfo.fps <= 0 {
                 videoInfo.fps = 30
             }
             print("fps:\(videoInfo.fps) ")
             self.videoInfo = videoInfo
+            
             let videoOutput = AVAssetReaderTrackOutput(track: track, outputSettings: getOutputSettings(videoInfo))
             if(assetReader.canAdd(videoOutput)){
                 assetReader.add(videoOutput)
             }
             self.videoOutput = videoOutput
             
+            
             guard let assetAudioTrack = try? await asset.loadTracks(withMediaType: .audio).first else {
                 print("Failed to get audioTrack")
                 return
             }
             
-//            let audioItem = AVPlayerItem(asset: asset)
-//            audioPlayer = AVPlayer(playerItem: audioItem)
+            let audioItem = AVPlayerItem(asset: asset)
+            audioPlayer = AVPlayer(playerItem: audioItem)
             
+            //            let composition = AVMutableComposition()
+            //            if let audioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+            //                do {
+            //                    try audioTrack.insertTimeRange(CMTimeRange(start: .zero, duration: asset.duration),
+            //                                                   of: assetAudioTrack,
+            //                                                   at: .zero)
+            //                } catch {
+            //                    print("Error copying audio track: \(error)")
+            //                }
+            //            }
+            //            let audioItem = AVPlayerItem(asset: composition)
+            //            audioPlayer = AVPlayer(playerItem: audioItem)
             
-            guard let duration = try? await asset.load(.duration) else {
-                return
-            }
-            
-            
-            let composition = AVMutableComposition()
-            if let audioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
-                do {
-                    try audioTrack.insertTimeRange(CMTimeRange(start: .zero, duration: duration),
-                                                   of: assetAudioTrack,
-                                                   at: .zero)
-                } catch {
-                    print("Error copying audio track: \(error)")
-                }
-            }
-            
-            let playerItem = AVPlayerItem(asset: composition)
-            audioPlayer = AVPlayer(playerItem: playerItem)
-            NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
             NotificationCenter.default.addObserver(
-                            self,
-                            selector: #selector(playerDidFinishPlaying),
-                            name: .AVPlayerItemDidPlayToEndTime,
-                            object: playerItem
-                        )
+                self,
+                selector: #selector(playerDidFinishPlaying),
+                name: .AVPlayerItemDidPlayToEndTime,
+                object: audioItem
+            )
             
-            audioPlayer?.play()
+            
+            //            audiPlayer?.play()
+            if let audioPlayer = audioPlayer {
+                var videoPlayerComponent = VideoPlayerComponent(avPlayer: audioPlayer)
+                videoPlayerComponent.desiredViewingMode = VideoPlaybackController.ViewingMode.stereo
+                videoPlayerComponent.isPassthroughTintingEnabled = false
+                
+                AlphaViewManager.shared.entities[idx].components.set(videoPlayerComponent)
+            }
+            
             if assetReader.startReading() {
                 print("开始读取")
             } else {
@@ -245,31 +298,31 @@ extension WLMp4Decoder { // 处理视频渲染
             }
             
             setupTimeObserver()
+            self.willStartCallback?(Int(videoInfo.size.width), Int(videoInfo.size.height), Int(videoInfo.fps),Int(9))
         }
     }
-    
-    
-    @objc func playerDidFinishPlaying(note: NSNotification) {
-            print("播放完成")
-            playCompleteCallback?(true)
-        }
+    @objc func playerDidFinishPlaying() {
+        print("播放完成")
+        pause()
+        clearCache()
+        playCompleteCallback?()
+    }
     
     private func setupTimeObserver() {
         guard let audioPlayer = audioPlayer else { return }
         let interval = CMTime(seconds: 1.0 / Double(videoInfo.fps), preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        timeObserverToken = nil
         timeObserverToken = audioPlayer.addPeriodicTimeObserver(forInterval: interval, queue: videoProcessingQueue) { [weak self] time in
+            
             self?.updateVideoFrame(at: time)
         }
     }
     
     private func updateVideoFrame(at time: CMTime) {
-        
-        guard let audioPlayer = audioPlayer else { return }
-        
-//        guard let leftEyeTexture = leftEyeTexture,
-//              let rightEyeTexture = rightEyeTexture else {
-//            return
-//        }
+        guard let leftEyeTexture = leftEyeTexture,
+              let rightEyeTexture = rightEyeTexture else {
+            return
+        }
         
         guard let assetReader = self.assetReader else {
             print("Failed not found assetReader ")
@@ -278,7 +331,8 @@ extension WLMp4Decoder { // 处理视频渲染
         
         if assetReader.status == .completed {
             print("assetReader completed")
-            playCompleteCallback?(true)
+            //            playCompleteCallback?()
+            playerDidFinishPlaying()
             return
         }
         
@@ -292,7 +346,7 @@ extension WLMp4Decoder { // 处理视频渲染
             return
         }
         
-        let tempAudioTime = audioPlayer.currentTime()
+        let tempAudioTime = audioPlayer!.currentTime()
         let audioTime = tempAudioTime
         
         let tempVideoTime = CMSampleBufferGetPresentationTimeStamp(nextSampleBuffer)
@@ -302,7 +356,7 @@ extension WLMp4Decoder { // 处理视频渲染
         let audioCurrent = CMTimeGetSeconds(audioTime)
         
         let offset = videoCurrent - audioCurrent
-        print("offset = \(offset)")
+        //        print("idx:\(self.idx)--offset = \(offset)")
         if offset < -0.1 {
             while let nextBuffer = videoOutput?.copyNextSampleBuffer() {
                 let nextFrameTime = CMSampleBufferGetPresentationTimeStamp(nextBuffer)
@@ -311,16 +365,11 @@ extension WLMp4Decoder { // 处理视频渲染
                 }
             }
         } else if offset > 0.1 {
-            return   
+            return
         }
         
         guard let textures = getTextures(cmSampleBuffer: nextSampleBuffer) else {
             print("textures not found")
-            return
-        }
-        
-        guard let leftEyeTexture = leftEyeTexture,
-              let rightEyeTexture = rightEyeTexture else {
             return
         }
         
@@ -339,47 +388,47 @@ extension WLMp4Decoder { // 处理视频渲染
             return
         }
         
+        if textures.count >= 1 {
+            if (textures[0].width == leftEyeTexture.width && textures[0].height == leftEyeTexture.height){
+                blitCommandEncoder.copy(from: textures[0], to: leftEyeTexture)
+            }
+            else{
+                print("idx = \(idx)左眼RT(\(textures[0].width)-\(textures[0].height))----(\(leftEyeTexture.width)-\(leftEyeTexture.height))")
+            }
+            
+        }
+        if textures.count > 1 {
+            if (textures[1].width == rightEyeTexture.width && textures[1].height == rightEyeTexture.height){
+                blitCommandEncoder.copy(from: textures[1], to: rightEyeTexture)
+            }
+            else{
+                print("左眼RT(\(textures[1].width)-\(textures[1].height))----(\(rightEyeTexture.width)-\(rightEyeTexture.height))")
+            }
+            
+        }
         
-
         
         if test {
             testRender(textures: textures, blitCommandEncoder: blitCommandEncoder, commandBuffer: commandBuffer)
         } else {
-            if textures.count > 0 {
-                blitCommandEncoder.copy(from: textures[0], to: leftEyeTexture)
-            }
-            if textures.count > 1 {
-                blitCommandEncoder.copy(from: textures[1], to: rightEyeTexture)
-            }
-            
             blitCommandEncoder.endEncoding()
             commandBuffer.commit()
         }
+        print("idx:\(self.idx) currentTime: \(currentTime)")
     }
     
     private func testRender(textures: [any MTLTexture],
                             blitCommandEncoder: any MTLBlitCommandEncoder,
                             commandBuffer: any MTLCommandBuffer) {
-        
-//        let centerX = (textures[0].width - 100) / 2
-//        let centerY = (textures[0].height - 100) / 2
-        
         if let left = testLeftLayer?.nextDrawable() {
-            let region = MTLRegionMake2D(0, 0, left.texture.width, left.texture.height)
-            
-//            blitCommandEncoder.copy(from: textures.first!, to: left.texture)
-            blitCommandEncoder.copy(from: textures[0], sourceSlice: 0, sourceLevel: 0, sourceOrigin: region.origin, sourceSize: region.size, to: left.texture, destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOriginMake(0, 0, 0))
-
+            blitCommandEncoder.copy(from: textures.first!, to: left.texture)
         }
         
         if let right = testRightLayer?.nextDrawable() {
-            let region = MTLRegionMake2D(textures[0].width - right.texture.width, 0, right.texture.width, right.texture.height)
             if textures.count > 1 {
-//                blitCommandEncoder.copy(from: textures[1], to: right.texture)
-                blitCommandEncoder.copy(from: textures[1], sourceSlice: 0, sourceLevel: 0, sourceOrigin: region.origin, sourceSize: region.size, to: right.texture, destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOriginMake(0, 0, 0))
+                blitCommandEncoder.copy(from: textures[1], to: right.texture)
             } else if textures.count == 1 {
-//                blitCommandEncoder.copy(from: textures.first!, to: right.texture)
-                blitCommandEncoder.copy(from: textures[0], sourceSlice: 0, sourceLevel: 0, sourceOrigin: region.origin, sourceSize: region.size, to: right.texture, destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOriginMake(0, 0, 0))
+                blitCommandEncoder.copy(from: textures.first!, to: right.texture)
             }
         }
         
@@ -387,8 +436,9 @@ extension WLMp4Decoder { // 处理视频渲染
         
         testLeftLayer?.nextDrawable()?.present()
         testRightLayer?.nextDrawable()?.present()
-
+        
         commandBuffer.commit()
+        
     }
 }
 
@@ -484,13 +534,11 @@ extension WLMp4Decoder { // 处理 texture
             return nil
         }
         
-        Test.test(cvPixelBuffer)
-        
         let width = CVPixelBufferGetWidth(cvPixelBuffer)
         let height = CVPixelBufferGetHeight(cvPixelBuffer)
         
         // Specify pixel format based on your CVPixelBuffer
-        let pixelFormat = MTLPixelFormat.bgra8Unorm
+        let pixelFormat = MTLPixelFormat.rg11b10Float
         
         var texture: CVMetalTexture?
         let status = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault,

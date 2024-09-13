@@ -141,7 +141,7 @@ struct VideoTools {
             print("No video track found")
             return nil
         }
-        
+        videoInfo.videoTrack = videoTrack
         // Get video properties
         guard
             let (naturalSize, formatDescriptions, mediaCharacteristics) =
@@ -153,9 +153,44 @@ struct VideoTools {
         }
         
         videoInfo.size = naturalSize
+        
+        
+#if targetEnvironment(simulator)
+        videoInfo.isSpatial = false
+#else
         videoInfo.isSpatial = mediaCharacteristics.contains(.containsStereoMultiviewVideo)
+#endif
         print("videoInfo.isSpatial = \(videoInfo.isSpatial)")
         
+       // 只需要第一个 formatDescription
+       guard let formatDescription = formatDescriptions.first else {
+           print("没有找到视频格式描述")
+           return nil;
+       }
+       
+        // 获取 colorPrimaries, transferFunction 和 yCbCrMatrix
+        var colorPrimaries: String?
+        var transferFunction: String?
+        var yCbCrMatrix: String?
+        if let primaries = CMFormatDescriptionGetExtension(formatDescription, extensionKey: kCMFormatDescriptionExtension_ColorPrimaries) as? String {
+            colorPrimaries = primaries
+            print("videoInfo.colorPrimaries:\(primaries)")
+        }
+        
+        if let transferFunc = CMFormatDescriptionGetExtension(formatDescription, extensionKey: kCMFormatDescriptionExtension_TransferFunction) as? String {
+            transferFunction = transferFunc
+            
+            print("videoInfo.transferFunction:\(transferFunc)")
+        }
+        
+        if let matrix = CMFormatDescriptionGetExtension(formatDescription, extensionKey: kCMFormatDescriptionExtension_YCbCrMatrix) as? String {
+            yCbCrMatrix = matrix
+            
+            print("videoInfo.yCbCrMatrix:\(matrix)")
+        }
+        videoInfo.colorPrimaries = colorPrimaries
+        videoInfo.transferFunction = transferFunction
+        videoInfo.yCbCrMatrix = yCbCrMatrix
         let projection = VideoTools.getProjection(formatDescription: formatDescription)
         videoInfo.projectionType = projection.projectionType
         videoInfo.horizontalFieldOfView = projection.horizontalFieldOfView
