@@ -61,8 +61,8 @@ struct ContentView: View {
     @State private var leftLayer2 = MetalLayerHolder()
     @State private var rightLayer2 = MetalLayerHolder()
     
-    @State var w: CGFloat = 720
-    @State var h: CGFloat = 720
+    @State var w: CGFloat = 400
+    @State var h: CGFloat = 400
     var body: some View {
         ZStack {
             HStack {
@@ -114,19 +114,22 @@ struct ContentView: View {
                 Spacer()
             }
             
-            
+        }
+        .onAppear {
+            initPlayer()
         }
     }
 }
 
 extension ContentView {
-    func play() {
+    
+    func initPlayer() {
         decoder.test = true
         
-        decoder.initPlayer(url: Bundle.main.url(forResource: "8152", withExtension: "mov")!,
-                           secondUrl: Bundle.main.url(forResource: "8152", withExtension: "mov")!,
-                           secondStart: CMTime(seconds: 5, preferredTimescale: 1),
-                           secondSeek: CMTime(seconds: 5, preferredTimescale: 1),
+        decoder.initPlayer(url: Bundle.main.url(forResource: "8153", withExtension: "mov")!,
+                           secondUrl: Bundle.main.url(forResource: "8153-c", withExtension: "mov")!,
+                           secondStart: CMTime(seconds: 15, preferredTimescale: 1),
+                           secondSeek: CMTime(seconds: 15, preferredTimescale: 1),
                            identifier: 0)
         
         decoder.willStartCallback = {[weak decoder] _, _, _, _, _, _, _ in
@@ -141,8 +144,11 @@ extension ContentView {
             decoder.testRightLayer = rightLayer.metalLayer
             decoder.testSecondLeftLayer = leftLayer2.metalLayer
             decoder.testSecondRightLayer = rightLayer2.metalLayer
-            decoder.play()
         }
+    }
+    
+    func play() {
+        decoder.play()
 
         
 //        decoder.play(url: Bundle.main.url(forResource: "fail", withExtension: "mov")!,

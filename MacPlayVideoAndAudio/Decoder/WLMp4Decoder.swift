@@ -24,7 +24,8 @@ class WLMp4Decoder: NSObject {
     private var secondSeek: CMTime = .zero
     
     private var metalTextureCache: CVMetalTextureCache?
-    private let videoProcessingQueue: DispatchQueue = DispatchQueue(label: "com.wl.audio.obs.\(UUID().uuidString)", qos: .userInitiated)
+    private let videoProcessingQueue: DispatchQueue = DispatchQueue(label: "com.wl.audio.obs.\(UUID().uuidString)", qos: .userInteractive)
+    private let renderQueue: DispatchQueue = DispatchQueue(label: "com.wl.render.\(UUID().uuidString)", qos: .userInteractive)
     
     private var videoInfo: VideoInfo = VideoInfo()
     private var secondVideoInfo: VideoInfo = VideoInfo()
@@ -234,7 +235,7 @@ extension WLMp4Decoder { // 处理视频渲染
             return nil
         }
         
-
+        
         guard let videoInfo = await VideoTools.getVideoInfo(asset: asset) else {
             print("Failed to get video info")
             return nil
@@ -403,17 +404,26 @@ extension WLMp4Decoder { // 处理视频渲染
             return
         }
         
-        guard let sampleBuffer = getNextSampleBuffer(time, firstAssetReader) else {
+        var secondSampleBuffer: CMSampleBuffer? = nil
+        guard let firstSampleBuffer = self.getNextSampleBuffer(time, self.firstAssetReader) else {
             return
         }
         
-        var secondSampleBuffer: CMSampleBuffer? = nil
         let offset = time.seconds - secondStart.seconds
         if offset >= 0 {
-            secondSampleBuffer = getNextSampleBuffer(CMTime(seconds: offset, preferredTimescale: 1), secondAssetReader, false)
             print("time.seconds = \(time.seconds)")
+            let adjustedTime = CMTime(seconds: self.secondSeek.seconds + offset, preferredTimescale: time.timescale)
+            secondSampleBuffer = self.getNextSampleBuffer(adjustedTime, self.secondAssetReader, false)
         }
-        render(sampleBuffer, secondSampleBuffer)
+        if secondSampleBuffer != nil  {
+            let first = CMSampleBufferGetPresentationTimeStamp(firstSampleBuffer)
+            let second = CMSampleBufferGetPresentationTimeStamp(secondSampleBuffer!)
+            print("second offset = \(first.seconds - second.seconds)")
+        }
+        
+        renderQueue.sync {
+            render(firstSampleBuffer, secondSampleBuffer)
+        }
     }
     
     private func render(_ buffer: CMSampleBuffer, _ secondBuffer: CMSampleBuffer?) {
