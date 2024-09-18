@@ -100,7 +100,7 @@ struct ContentView: View {
                     }
                     
                     Button("seek") {
-                        let time = CMTime(seconds: 120, preferredTimescale: 1)
+                        let time = CMTime(seconds: 470, preferredTimescale: 1)
                         decoder.seek(time: time)
                     }
                     
@@ -126,24 +126,23 @@ extension ContentView {
     func initPlayer() {
         decoder.test = true
         
-        decoder.initPlayer(url: Bundle.main.url(forResource: "8151", withExtension: "mov")!,
-                           secondUrl: Bundle.main.url(forResource: "8152", withExtension: "mov")!,
-                           secondStart: CMTime(seconds: 475, preferredTimescale: 1),
-                           secondSeek: CMTime(seconds: 90, preferredTimescale: 1),
-                           identifier: 0)
+        decoder.initPlayer(url: Bundle.main.url(forResource: "8153", withExtension: "mov")!,
+                           secondUrl: nil,
+                           secondStart: CMTime(seconds: 385, preferredTimescale: 1),
+                           secondSeek: CMTime(seconds: 0, preferredTimescale: 1))
         
         decoder.willStartCallback = {[weak decoder] _, _, _, _, _, _, _ in
             guard let decoder = decoder else { return }
             
             decoder.setTexture(leftEyeTexture: leftLayer.metalLayer?.nextDrawable()?.texture,
                                rightEyeTexture: rightLayer.metalLayer?.nextDrawable()?.texture,
-                               secondLeftEyeTexture: leftLayer2.metalLayer?.nextDrawable()?.texture,
-                               secondRightEyeTexture: rightLayer2.metalLayer?.nextDrawable()?.texture)
+                               secondLeftEyeTexture: nil,
+                               secondRightEyeTexture: nil)
             
             decoder.testLeftLayer = leftLayer.metalLayer
             decoder.testRightLayer = rightLayer.metalLayer
-            decoder.testSecondLeftLayer = leftLayer2.metalLayer
-            decoder.testSecondRightLayer = rightLayer2.metalLayer
+//            decoder.testSecondLeftLayer = leftLayer2.metalLayer
+//            decoder.testSecondRightLayer = rightLayer2.metalLayer
         }
     }
     

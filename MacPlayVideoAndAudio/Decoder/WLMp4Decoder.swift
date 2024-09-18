@@ -44,7 +44,6 @@ class WLMp4Decoder: NSObject {
     var testSecondLeftLayer: CAMetalLayer?
     var testSecondRightLayer: CAMetalLayer?
     
-    private var _identifier:UInt64 = 0;
     @objc var volume: Float { // 音量范围（0 - 1）
         set {
             audioPlayer?.volume = newValue
@@ -120,7 +119,8 @@ class WLMp4Decoder: NSObject {
             if success {
                 Task {
                     let offset = time.seconds - (self.secondStart.seconds + self.secondSeek.seconds)
-                    self.secondAssetReader = await self.videoSeek(CMTime(seconds: (offset > 0 ? offset : 0) + self.secondSeek.seconds, preferredTimescale: 1), self.secondUrl, self.secondAssetReader, self.secondVideoInfo)
+                    let seekTime = CMTime(seconds: (offset > 0 ? offset : 0) + self.secondSeek.seconds, preferredTimescale: 1)
+                    self.secondAssetReader = await self.videoSeek(seekTime, self.secondUrl, self.secondAssetReader, self.secondVideoInfo)
                     self.secondAssetReader?.outputs.first?.copyNextSampleBuffer()
                     
                     if let reader = await self.videoSeek(time, self.url, self.firstAssetReader, self.videoInfo) {
@@ -160,8 +160,7 @@ class WLMp4Decoder: NSObject {
     }
     
     
-    @objc func initPlayer(url: URL, secondUrl: URL, secondStart: CMTime, secondSeek: CMTime, identifier:UInt64) {
-        _identifier = identifier
+    @objc func initPlayer(url: URL, secondUrl: URL?, secondStart: CMTime, secondSeek: CMTime) {
         audioPlayer?.pause()
         firstAssetReader = nil
         secondAssetReader = nil
@@ -186,15 +185,15 @@ class WLMp4Decoder: NSObject {
     }
     
     @objc func resume() {
-        audioPaused = false
         if audioPlayer?.status == .readyToPlay {
+            audioPaused = false
             audioPlayer?.play()
         }
     }
     
     @objc func rePlay() {
-        audioPaused = false
         seek(time: .zero)
+        audioPaused = false
         audioPlayer?.play()
     }
     
@@ -298,7 +297,13 @@ extension WLMp4Decoder { // 处理视频渲染
             }
             assetReader.outputs.first?.copyNextSampleBuffer()
             setupTimeObserver()
-            self.willStartCallback?(Int(videoInfo.size.width), Int(videoInfo.size.height), Int(videoInfo.fps), Int(secondVideoInfo.size.width), Int(secondVideoInfo.size.height), Int(secondVideoInfo.fps), Int(9))
+            self.willStartCallback?(Int(videoInfo.size.width), 
+                                    Int(videoInfo.size.height),
+                                    Int(videoInfo.fps),
+                                    Int(secondVideoInfo.size.width),
+                                    Int(secondVideoInfo.size.height),
+                                    Int(secondVideoInfo.fps),
+                                    Int(9))
         }
     }
     
@@ -409,7 +414,7 @@ extension WLMp4Decoder { // 处理视频渲染
         
         let offset = time.seconds - secondStart.seconds
         if offset >= 0 {
-//            print("time.seconds = \(time.seconds)")
+            //            print("time.seconds = \(time.seconds)")
             let adjustedTime = CMTime(seconds: self.secondSeek.seconds + offset, preferredTimescale: time.timescale)
             secondSampleBuffer = self.getNextSampleBuffer(adjustedTime, self.secondAssetReader, false)
         }
@@ -453,24 +458,38 @@ extension WLMp4Decoder { // 处理视频渲染
         }
         
         if test == false {
-            if textures.count >= 1 {
-                if (textures[0].width == leftEyeTexture.width && textures[0].height == leftEyeTexture.height){
-                    blitCommandEncoder.copy(from: textures[0], to: leftEyeTexture)
-                } else {
-                    print("idx = \(idx)左眼RT(\(textures[0].width)-\(textures[0].height))----(\(leftEyeTexture.width)-\(leftEyeTexture.height))")
-                }
+            wlCopyTeture(blitCommandEncoder: blitCommandEncoder, textures: textures, leftEyeTexture: leftEyeTexture, rightEyeTexture: rightEyeTexture)
+            
+            if let secoundTextures = secoundTextures,
+               let secondLeftEyeTexture = secondLeftEyeTexture,
+               let secondRightEyeTexture = secondRightEyeTexture {
+                wlCopyTeture(blitCommandEncoder: blitCommandEncoder, textures: secoundTextures, leftEyeTexture: secondLeftEyeTexture, rightEyeTexture: secondRightEyeTexture)
             }
-            if textures.count > 1 {
-                if (textures[1].width == rightEyeTexture.width && textures[1].height == rightEyeTexture.height) {
-                    blitCommandEncoder.copy(from: textures[1], to: rightEyeTexture)
-                } else {
-                    print("左眼RT(\(textures[1].width)-\(textures[1].height))----(\(rightEyeTexture.width)-\(rightEyeTexture.height))")
-                }
-            }
+            
             blitCommandEncoder.endEncoding()
             commandBuffer.commit()
         } else {
             testRender(textures: textures, secondTextures: secoundTextures,  blitCommandEncoder: blitCommandEncoder, commandBuffer: commandBuffer)
+        }
+    }
+    
+    func wlCopyTeture(blitCommandEncoder: any MTLBlitCommandEncoder,
+                      textures: [any MTLTexture],
+                      leftEyeTexture: any MTLTexture,
+                      rightEyeTexture: any MTLTexture) {
+        if textures.count >= 1 {
+            if (textures[0].width == leftEyeTexture.width && textures[0].height == leftEyeTexture.height){
+                blitCommandEncoder.copy(from: textures[0], to: leftEyeTexture)
+            } else {
+                print("idx = \(idx)左眼RT(\(textures[0].width)-\(textures[0].height))----(\(leftEyeTexture.width)-\(leftEyeTexture.height))")
+            }
+        }
+        if textures.count > 1 {
+            if (textures[1].width == rightEyeTexture.width && textures[1].height == rightEyeTexture.height) {
+                blitCommandEncoder.copy(from: textures[1], to: rightEyeTexture)
+            } else {
+                print("idx = \(idx)右眼RT(\(textures[1].width)-\(textures[1].height))----(\(rightEyeTexture.width)-\(rightEyeTexture.height))")
+            }
         }
     }
     
@@ -500,7 +519,7 @@ extension WLMp4Decoder { // 处理视频渲染
         }
         
         let audioTime = time
-
+        
         let tempVideoTime = CMSampleBufferGetPresentationTimeStamp(nextSampleBuffer)
         let videoTime = tempVideoTime
         
@@ -508,7 +527,7 @@ extension WLMp4Decoder { // 处理视频渲染
         let audioCurrent = CMTimeGetSeconds(audioTime)
         
         let offset = videoCurrent - audioCurrent
-//        print("offset = \(offset)--idx:\(self.idx)--\(assetReader.asset)")
+        //        print("offset = \(offset)--idx:\(self.idx)--\(assetReader.asset)")
         if offset < -0.1 {
             while let nextBuffer = videoOutput.copyNextSampleBuffer() {
                 let nextFrameTime = CMSampleBufferGetPresentationTimeStamp(nextBuffer)
@@ -532,10 +551,10 @@ extension WLMp4Decoder { // 处理视频渲染
             testCopyTexture(textures, testLeftLayer, testRightLayer, blitCommandEncoder)
         }
         
-        if secondTextures != nil && secondTextures!.count > 0 {
+        if secondTextures != nil && secondTextures!.count > 0 && testSecondLeftLayer != nil && testSecondRightLayer != nil {
             testCopyTexture(secondTextures!, testSecondLeftLayer, testSecondRightLayer, blitCommandEncoder)
         }
-
+        
         blitCommandEncoder.endEncoding()
         
         testLeftLayer?.nextDrawable()?.present()
