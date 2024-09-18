@@ -126,10 +126,10 @@ extension ContentView {
     func initPlayer() {
         decoder.test = true
         
-        decoder.initPlayer(url: Bundle.main.url(forResource: "8153", withExtension: "mov")!,
-                           secondUrl: Bundle.main.url(forResource: "8153-c", withExtension: "mov")!,
-                           secondStart: CMTime(seconds: 15, preferredTimescale: 1),
-                           secondSeek: CMTime(seconds: 15, preferredTimescale: 1),
+        decoder.initPlayer(url: Bundle.main.url(forResource: "8151", withExtension: "mov")!,
+                           secondUrl: Bundle.main.url(forResource: "8152", withExtension: "mov")!,
+                           secondStart: CMTime(seconds: 475, preferredTimescale: 1),
+                           secondSeek: CMTime(seconds: 90, preferredTimescale: 1),
                            identifier: 0)
         
         decoder.willStartCallback = {[weak decoder] _, _, _, _, _, _, _ in

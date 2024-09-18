@@ -120,10 +120,8 @@ class WLMp4Decoder: NSObject {
             if success {
                 Task {
                     let offset = time.seconds - (self.secondStart.seconds + self.secondSeek.seconds)
-                    if  offset > 0  {
-                        self.secondAssetReader = await self.videoSeek(CMTime(seconds: offset + self.secondSeek.seconds, preferredTimescale: 1), self.secondUrl, self.secondAssetReader, self.secondVideoInfo)
-                        self.secondAssetReader?.outputs.first?.copyNextSampleBuffer()
-                    }
+                    self.secondAssetReader = await self.videoSeek(CMTime(seconds: (offset > 0 ? offset : 0) + self.secondSeek.seconds, preferredTimescale: 1), self.secondUrl, self.secondAssetReader, self.secondVideoInfo)
+                    self.secondAssetReader?.outputs.first?.copyNextSampleBuffer()
                     
                     if let reader = await self.videoSeek(time, self.url, self.firstAssetReader, self.videoInfo) {
                         self.firstAssetReader = reader
@@ -411,7 +409,7 @@ extension WLMp4Decoder { // 处理视频渲染
         
         let offset = time.seconds - secondStart.seconds
         if offset >= 0 {
-            print("time.seconds = \(time.seconds)")
+//            print("time.seconds = \(time.seconds)")
             let adjustedTime = CMTime(seconds: self.secondSeek.seconds + offset, preferredTimescale: time.timescale)
             secondSampleBuffer = self.getNextSampleBuffer(adjustedTime, self.secondAssetReader, false)
         }
@@ -502,7 +500,7 @@ extension WLMp4Decoder { // 处理视频渲染
         }
         
         let audioTime = time
-        
+
         let tempVideoTime = CMSampleBufferGetPresentationTimeStamp(nextSampleBuffer)
         let videoTime = tempVideoTime
         
