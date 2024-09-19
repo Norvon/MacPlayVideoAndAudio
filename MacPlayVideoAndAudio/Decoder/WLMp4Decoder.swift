@@ -61,6 +61,8 @@ class WLMp4Decoder: NSObject {
     @objc func setTexture(leftEyeTexture: MTLTexture?, rightEyeTexture: MTLTexture?, secondLeftEyeTexture: MTLTexture?, secondRightEyeTexture: MTLTexture?) {
         self.leftEyeTexture = leftEyeTexture
         self.rightEyeTexture = rightEyeTexture
+        self.secondLeftEyeTexture = leftEyeTexture
+        self.secondRightEyeTexture = rightEyeTexture
     }
     
     private func getOutputSettings(_ videoInfo: VideoInfo) -> [String: Any] {
